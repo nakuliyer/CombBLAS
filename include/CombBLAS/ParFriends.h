@@ -34,6 +34,7 @@
 #include <iostream>
 #include <cstdarg>
 #include "SpParMat.h"	
+#include "SpParMat1D.h"	
 #include "SpParMat3D.h"	
 #include "SpParHelper.h"
 #include "MPIType.h"
