@@ -97,18 +97,23 @@ int main(int argc, char* argv[])
         if(myrank == 0) fprintf(stderr, "Time taken to read file: %lf\n", t1-t0);
         typedef PlusTimesSRing<double, double> PTFF;
     
-        // // Run 2D multiplication to compare against
+        // Run 2D multiplication to compare against
         // SpParMat<int64_t, double, SpDCCols < int64_t, double >> A2D(M);
         // SpParMat<int64_t, double, SpDCCols < int64_t, double >> B2D(M);
         // SpParMat<int64_t, double, SpDCCols < int64_t, double >> C2D = 
-        //     Mult_AnXBn_Synch<PTFF, double, SpDCCols<int64_t, double>, int64_t, double, double, SpDCCols<int64_t, double>, SpDCCols<int64_t, double> >
-        //     (A2D, B2D);
+        // Mult_AnXBn_Synch<PTFF, double, SpDCCols<int64_t, double>, int64_t, double, double, SpDCCols<int64_t, double>, SpDCCols<int64_t, double> >
+        // (A2D, B2D);
+        
+        // do diagonal multi and SB
+        SpParMat1D<int64_t, double, SpDCCols<int64_t, double>> A1D_col(M,128,SpParMat1DTYPE::COLWISE); 
+        // do (S^TB^T)^T
+        SpParMat1D<int64_t, double, SpDCCols<int64_t, double>> A1D_transe(M,128,SpParMat1DTYPE::COLWISE); 
+        // do S^2
+        SpParMat<int64_t, double, SpDCCols<int64_t, double>> Aoffdiag(M);
+        Aoffdiag = Mult_AnXBn_Synch<PTFF, double, SpDCCols<int64_t, double>, int64_t, double, double, SpDCCols<int64_t, double>, SpDCCols<int64_t, double>>(Aoffdiag, Aoffdiag, true, true);
 
-        SpParMat1D<int64_t, double, SpDCCols<int64_t, double>> A1D_row(M,128,SparMat1DTYPE::ROWWISE);
-        SpParMat1D<int64_t, double, SpDCCols<int64_t, double>> A1D_col(M,128,SparMat1DTYPE::COLWISE);
+        
         if(myrank == 0) fprintf(stderr, "2D Multiplication done \n");
-
-
     }
     MPI_Finalize();
     return 0;

@@ -32,6 +32,8 @@
 #include "ParFriends.h"
 #include "Operations.h"
 #include "FileHeader.h"
+#include "SpTuples.h"
+#include <vector>
 extern "C" {
 #include "mmio.h"
 }
@@ -2774,7 +2776,11 @@ SpParMat<IT,NT,DER> SpParMat<IT,NT,DER>::PruneColumn(const FullyDistSpVec<IT,NT>
     }
 }
 
-
+template <class IT, class NT, class DER>
+void SpParMat<IT,NT,DER>::PruneDiagBlock(int blocksize)
+{
+	
+}
 
 // In-place version where rhs type is the same (no need for type promotion)
 template <class IT, class NT, class DER>
@@ -2967,7 +2973,40 @@ void SpParMat< IT,NT,DER >::SparseCommon(std::vector< std::vector < std::tuple<L
   	spSeq = new DER(A,false);        // Convert SpTuples to DER
 }
 
-
+/**
+ * @brief Remove the diagonal block from the original matrix.
+ * 
+ * @tparam IT 
+ * @tparam NT 
+ * @tparam DER 
+ * @param blocksize The diagonal square block length
+ * @return SpParMat<IT, NT, DER> 
+ */
+template <class IT, class NT, class DER>
+void SpParMat<IT, NT, DER>::RemoveDiagBlock(int blocksize)
+{
+	typedef typename DER::LocalIT LIT;
+	std::vector<std::tuple<LIT,LIT,NT>> removedtuples;
+	IT	g_nr   = this->getnrow();
+	IT	g_nc   = this->getncol();
+	int np	 = commGrid->GetSize();
+	int rank = commGrid->GetRank();
+	IT	g_rbeg = (g_nr/commGrid->GetGridRows()) * commGrid->GetRankInProcCol();
+	IT	g_cbeg = (g_nc/commGrid->GetGridCols()) * commGrid->GetRankInProcRow();
+	SpTuples<IT, NT> tuples(*spSeq);
+	std::vector<SpTuples<IT, NT>> newtuples;
+	for (int64_t i = 0; i < tuples.getnnz(); ++i)
+	{
+		IT g_ridx = g_rbeg + tuples.rowindex(i);
+		IT g_cidx = g_cbeg + tuples.colindex(i);
+		IT ni = g_ridx / blocksize;
+        IT nj = g_cidx / blocksize;
+		if (ni != nj) continue;
+		newtuples.push_back(tuples[i]);
+	}
+	delete spSeq;
+	spSeq = new DER(newtuples,false);
+}
 
 template <class IT, class NT, class DER>
 std::vector<std::vector<SpParMat<IT, NT, DER>>>

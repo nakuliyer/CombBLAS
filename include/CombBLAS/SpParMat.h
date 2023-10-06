@@ -243,6 +243,8 @@ public:
 	
 	bool operator== (const SpParMat<IT,NT,DER> & rhs) const;
 
+	void PruneDiagBlock(int blocksize);
+
 	class ScalarReadSaveHandler
 	{
 	public:
@@ -313,6 +315,8 @@ public:
 	// @TODO-OGUZ allow different index type for blocked matrices
 	std::vector<std::vector<SpParMat<IT, NT, DER>>>
 	BlockSplit (int br, int bc);
+	
+	void RemoveDiagBlock(int blocksize);
 	
 
 	//! Friend declarations

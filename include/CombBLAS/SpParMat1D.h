@@ -31,7 +31,7 @@
 namespace combblas
 {
 
-    enum SparMat1DTYPE{
+    enum SpParMat1DTYPE{
         ROWWISE = 1,
         COLWISE = 2,
     };
@@ -45,18 +45,18 @@ namespace combblas
         typedef NT GlobalNT;
         
         // Constructors
-        SpParMat1D (const SpParMat < IT,NT,DER > & A2D, int blocksize, SparMat1DTYPE type);
+        SpParMat1D (const SpParMat < IT,NT,DER > & A2D, int blocksize, SpParMat1DTYPE type);
         ~SpParMat1D ();
         
         template <typename LIT>
-        int Owner(IT total_length, IT grow, IT gcol, LIT & lrow, LIT & lcol,SparMat1DTYPE type) const;
+        int Owner(IT total_length, IT grow, IT gcol, LIT & lrow, LIT & lcol,SpParMat1DTYPE type) const;
 
         template <typename SR, typename NUO, typename UDERO, typename IU, typename NU1, typename NU2, typename UDER1, typename UDER2>
-        friend SpParMat3D<IU,NUO,UDERO> Mult_AnXBn_1D(SpParMat3D<IU,NU1,UDER1> & A, SpParMat3D<IU,NU2,UDER2> & B);
-        
+        friend SpParMat<IU,NUO,UDERO> Mult_AnXBn_1D(SpParMat<IU,NU1,UDER1> & A, SpParMat<IU,NU2,UDER2> & B);
+
     private:
-        std::shared_ptr<CommGrid1D> commGrid1D;
-        SparMat1DTYPE type;
+        std::shared_ptr<CommGrid1D> grid1d;
+        SpParMat1DTYPE mattype;
         int blocksize;
         int total_length;
         int maxblocksizeperrank; 
