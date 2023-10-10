@@ -29,6 +29,7 @@
 #include <cstdint>
 #include <memory>
 #include <mpi.h>
+#include <sys/_types/_int64_t.h>
 #include <sys/time.h>
 #include <iostream>
 #include <functional>
@@ -36,6 +37,8 @@
 #include <vector>
 #include <sstream>
 #include "CombBLAS/CombBLAS.h"
+#include "CombBLAS/SpDCCols.h"
+#include "CombBLAS/SpMat.h"
 #include "CombBLAS/SpParMat1D.h"
 #include "CombBLAS/ParFriends.h"
 
@@ -62,6 +65,8 @@ public:
     typedef SpParMat < int64_t, NT, DCCols > MPI_DCCols;
 };
 
+typedef SpParMat1D<int64_t, double, SpDCCols<int64_t, double>> Sp1D;
+typedef SpParMat<int64_t, double, SpDCCols < int64_t, double >> Sp2D;
 int main(int argc, char* argv[])
 {
     int nprocs, myrank;
@@ -92,28 +97,31 @@ int main(int argc, char* argv[])
         
         // Read labelled triple files
         t0 = MPI_Wtime();
-        M.ReadGeneralizedTuples(Aname, maximum<double>());
+        auto distvec = M.ReadGeneralizedTuples(Aname, maximum<double>());
         t1 = MPI_Wtime();
         if(myrank == 0) fprintf(stderr, "Time taken to read file: %lf\n", t1-t0);
+        std::string filename("distmap.txt");
         typedef PlusTimesSRing<double, double> PTFF;
-    
         // Run 2D multiplication to compare against
-        // SpParMat<int64_t, double, SpDCCols < int64_t, double >> A2D(M);
-        // SpParMat<int64_t, double, SpDCCols < int64_t, double >> B2D(M);
-        // SpParMat<int64_t, double, SpDCCols < int64_t, double >> C2D = 
-        // Mult_AnXBn_Synch<PTFF, double, SpDCCols<int64_t, double>, int64_t, double, double, SpDCCols<int64_t, double>, SpDCCols<int64_t, double> >
-        // (A2D, B2D);
-        
-        // do diagonal multi and SB
-        SpParMat1D<int64_t, double, SpDCCols<int64_t, double>> A1D_col(M,128,SpParMat1DTYPE::COLWISE); 
-        // do (S^TB^T)^T
-        SpParMat1D<int64_t, double, SpDCCols<int64_t, double>> A1D_transe(M,128,SpParMat1DTYPE::COLWISE); 
-        // do S^2
-        SpParMat<int64_t, double, SpDCCols<int64_t, double>> Aoffdiag(M);
-        Aoffdiag = Mult_AnXBn_Synch<PTFF, double, SpDCCols<int64_t, double>, int64_t, double, double, SpDCCols<int64_t, double>, SpDCCols<int64_t, double>>(Aoffdiag, Aoffdiag, true, true);
-
-        
-        if(myrank == 0) fprintf(stderr, "2D Multiplication done \n");
+        SpParMat<int64_t, double, SpDCCols < int64_t, double >> A2D(M);
+        SpParMat<int64_t, double, SpDCCols < int64_t, double >> B2D(M);
+        SpParMat<int64_t, double, SpDCCols < int64_t, double >> C2D = 
+        Mult_AnXBn_Synch<PTFF, double, SpDCCols<int64_t, double>, int64_t, double, double, SpDCCols<int64_t, double>, SpDCCols<int64_t, double> >
+        (A2D, B2D);
+#ifndef NDDEBUG
+#endif
+        auto nnz2d = A2D.getnnz();
+        if(myrank == 0) cout << " nnz in 2D " << nnz2d << endl;
+        // do diagonal and SB
+        Sp1D A1D_col(M,SpParMat1DTYPE::COLWISE); 
+        Sp1D Anew = A1D_col.Mult_AnXAn_1D();
+        Sp2D A2D_wodiag(M);
+        A2D_wodiag.RemoveDiagBlock(A1D_col.getblocksize());
+        Sp2D B2D_wodiag(A2D_wodiag);
+        Sp2D C2D_wodiag = Mult_AnXBn_Synch<PTFF, double, SpDCCols<int64_t, double>, int64_t, double, double, SpDCCols<int64_t, double>, SpDCCols<int64_t, double> >
+        (A2D_wodiag, B2D_wodiag);
+        Sp1D A1D_wodiag(C2D_wodiag,SpParMat1DTYPE::COLWISE);
+        A1D_col += A1D_wodiag;
     }
     MPI_Finalize();
     return 0;

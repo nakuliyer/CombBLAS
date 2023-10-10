@@ -33,6 +33,7 @@
 #include "Operations.h"
 #include "FileHeader.h"
 #include "SpTuples.h"
+#include <tuple>
 #include <vector>
 extern "C" {
 #include "mmio.h"
@@ -2993,19 +2994,23 @@ void SpParMat<IT, NT, DER>::RemoveDiagBlock(int blocksize)
 	int rank = commGrid->GetRank();
 	IT	g_rbeg = (g_nr/commGrid->GetGridRows()) * commGrid->GetRankInProcCol();
 	IT	g_cbeg = (g_nc/commGrid->GetGridCols()) * commGrid->GetRankInProcRow();
+	int lrow = spSeq->getnrow();
+	int lcol = spSeq->getncol();
 	SpTuples<IT, NT> tuples(*spSeq);
-	std::vector<SpTuples<IT, NT>> newtuples;
+	std::vector<std::tuple<IT,IT,NT>> newtuples;
 	for (int64_t i = 0; i < tuples.getnnz(); ++i)
 	{
 		IT g_ridx = g_rbeg + tuples.rowindex(i);
 		IT g_cidx = g_cbeg + tuples.colindex(i);
 		IT ni = g_ridx / blocksize;
         IT nj = g_cidx / blocksize;
-		if (ni != nj) continue;
-		newtuples.push_back(tuples[i]);
+		if (ni == nj) continue;
+		newtuples.push_back(std::make_tuple(tuples.rowindex(i),tuples.colindex(i),tuples.numvalue(i)));
 	}
 	delete spSeq;
-	spSeq = new DER(newtuples,false);
+	SpTuples<IT, NT> newsptuples(newtuples.size(), lrow, lcol, newtuples.data());
+	newsptuples.tuples_deleted = true;
+	spSeq = new DER(newsptuples,false);
 }
 
 template <class IT, class NT, class DER>
@@ -4006,6 +4011,42 @@ FullyDistVec<IT,std::array<char, MAXVERTNAME> > SpParMat< IT,NT,DER >::ReadGener
     SparseCommon(data, locsize, totallength, totallength, BinOp);
     // PrintInfo();
     // distmapper.ParallelWrite("distmapper.mtx", 1, CharArraySaveHandler());
+	
+	cout << "Rank"<<myrank <<" map size " << ultimateperm.size() << endl;
+	// for(auto it=ultimateperm.begin(); it!= ultimateperm.end(); it++)
+	// {
+	// 	cout << it->first << "," << it->second << endl;
+	// }
+	// std::string jsonserial;
+	// nlohmann::json jsonData;
+	// for (const auto& pair : ultimateperm) {
+	// 	jsonData[pair.first] = pair.second;
+	// }
+	// jsonserial = jsonData.dump(4);
+	// std::vector<KEYMAP> allmap;
+	// for(int i=0; i<3; i++)
+	// {
+	// 	if(myrank == i+1)
+	// 	{
+	// 		long long sendcnt = jsonserial.size();
+	// 		MPI_Send(&sendcnt, 1, MPI_LONG_LONG, 0, 0, MPI_COMM_WORLD);
+	// 		MPI_Send(jsonserial.c_str(),jsonserial.size(),MPI_CHAR,0,1,MPI_COMM_WORLD);
+	// 	}else if(myrank == 0)
+	// 	{
+	// 		long long recvcnt;
+	// 		MPI_Recv(&recvcnt, 1, MPI_LONG_LONG, i+1, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+	// 		cout << "recv " << recvcnt << " from " << i+1 << endl;
+	// 		char * tmpc = new char[recvcnt];
+	// 		MPI_Recv(tmpc,recvcnt,MPI_CHAR,i+1,1,MPI_COMM_WORLD,MPI_STATUS_IGNORE);
+	// 		nlohmann::json jsondata = nlohmann::json::parse(std::string(tmpc));
+	// 		KEYMAP tmp = jsondata;
+	// 		allmap.push_back(tmp);
+	// 	}
+	// }
+	// if(myrank == 0)
+	// {
+		
+	// }
     return distmapper; 
 }
 

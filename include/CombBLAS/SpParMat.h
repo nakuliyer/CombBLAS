@@ -53,6 +53,7 @@
 #include "Operations.h"
 #include "DistEdgeList.h"
 #include "CombBLAS.h"
+#include "json.hpp"
 
 namespace combblas {
 

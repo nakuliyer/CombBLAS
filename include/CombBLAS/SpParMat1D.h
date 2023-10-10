@@ -5,6 +5,7 @@
 #include <fstream>
 #include <cmath>
 #include <mpi.h>
+#include <tuple>
 #include <vector>
 #include <iterator>
 
@@ -43,23 +44,25 @@ namespace combblas
         typedef typename DER::LocalNT LocalNT;
         typedef IT GlobalIT;
         typedef NT GlobalNT;
-        
+        typedef std::vector<std::tuple<IT,IT,NT>> vtuple;
+        typedef std::vector<std::vector<std::tuple<IT,IT,NT>>> vvtuple;
         // Constructors
-        SpParMat1D (const SpParMat < IT,NT,DER > & A2D, int blocksize, SpParMat1DTYPE type);
+        SpParMat1D (const SpParMat < IT,NT,DER > & A2D, SpParMat1DTYPE type);
         ~SpParMat1D ();
-        
-        template <typename LIT>
-        int Owner(IT total_length, IT grow, IT gcol, LIT & lrow, LIT & lcol,SpParMat1DTYPE type) const;
-
-        template <typename SR, typename NUO, typename UDERO, typename IU, typename NU1, typename NU2, typename UDER1, typename UDER2>
-        friend SpParMat<IU,NUO,UDERO> Mult_AnXBn_1D(SpParMat<IU,NU1,UDER1> & A, SpParMat<IU,NU2,UDER2> & B);
-
+        int Owner(IT grow, IT gcol, IT & lrow, IT & lcol,SpParMat1DTYPE type) const;
+        SpParMat1D<IT,NT,DER> Mult_AnXAn_1D();
+        SpParMat1D< IT,NT,DER > & operator+=(const SpParMat1D< IT,NT,DER > & rhs);
+        void Prune();
+        DER * localdiag();
+        IT getblocksize(){return blocksize;}
     private:
+        DER * spSeq;
         std::shared_ptr<CommGrid1D> grid1d;
         SpParMat1DTYPE mattype;
         int blocksize;
-        int total_length;
-        int maxblocksizeperrank; 
+        IT totallength;
+        IT colinmyrank;
+        IT colprefix;
     };
 }
 
