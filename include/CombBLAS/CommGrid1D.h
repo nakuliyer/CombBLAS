@@ -70,7 +70,9 @@ public:
 	}
 	bool operator== (const CommGrid1D & rhs) const {return *this==rhs;}
 	bool operator!= (const CommGrid1D & rhs) const {return (! (*this == rhs));}
-
+	int GetRank(){return myrank;}
+	int GetSize(){return worldsize;}
+	MPI_Comm GetWorld() const { return commWorld; }
 private:
 	MPI_Comm commWorld;
 	int myrank;

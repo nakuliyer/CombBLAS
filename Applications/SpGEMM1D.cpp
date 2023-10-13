@@ -29,7 +29,7 @@
 #include <cstdint>
 #include <memory>
 #include <mpi.h>
-#include <sys/_types/_int64_t.h>
+#include <stdint.h>
 #include <sys/time.h>
 #include <iostream>
 #include <functional>
@@ -93,35 +93,65 @@ int main(int argc, char* argv[])
 
         double t0, t1;
 
-        SpParMat<int64_t, double, SpDCCols < int64_t, double >> M(fullWorld);
+        SpParMat<int64_t, double, SpDCCols < int64_t, double >> Readingmatrix(fullWorld);
         
         // Read labelled triple files
         t0 = MPI_Wtime();
-        auto distvec = M.ReadGeneralizedTuples(Aname, maximum<double>());
+        Readingmatrix.ReadGeneralizedTuples(Aname, maximum<double>());
         t1 = MPI_Wtime();
         if(myrank == 0) fprintf(stderr, "Time taken to read file: %lf\n", t1-t0);
-        std::string filename("distmap.txt");
         typedef PlusTimesSRing<double, double> PTFF;
         // Run 2D multiplication to compare against
-        SpParMat<int64_t, double, SpDCCols < int64_t, double >> A2D(M);
-        SpParMat<int64_t, double, SpDCCols < int64_t, double >> B2D(M);
-        SpParMat<int64_t, double, SpDCCols < int64_t, double >> C2D = 
-        Mult_AnXBn_Synch<PTFF, double, SpDCCols<int64_t, double>, int64_t, double, double, SpDCCols<int64_t, double>, SpDCCols<int64_t, double> >
-        (A2D, B2D);
+        SpParMat<int64_t, double, SpDCCols < int64_t, double >> A2D(Readingmatrix);
+        SpParMat<int64_t, double, SpDCCols < int64_t, double >> B2D(Readingmatrix);
+
+        SpParMat1D<int64_t, double, SpDCCols<int64_t, double>> A1D(A2D,SpParMat1DTYPE::COLWISE);
+        SpParMat1D<int64_t, double, SpDCCols<int64_t, double>> B1D(A2D,SpParMat1DTYPE::COLWISE);
+        Sp2D A2D_new(A1D);
+        bool eq = (A2D == A2D_new);
+        cout << eq << endl;
+
+        Sp1D C1D = Mult_AnXBn_Diag<PTFF, double, SpDCCols<int64_t, double>, int64_t, double, double, SpDCCols<int64_t, double>, SpDCCols<int64_t, double> >
+        (A1D,B1D);
+        // cout << C1D.getnrow() << ", " << C1D.getncol() << endl;
+        Sp2D C2DFrom1D(C1D);
+        const int64_t TMP = (A1D.getnrow() + nprocs-1)/nprocs;
+        A2D.KeepDiagBlock(TMP);
+        B2D.KeepDiagBlock(TMP);
+
+        // Sp2D C2D = 
+        // Mult_AnXBn_Synch<PTFF, double, SpDCCols<int64_t, double>, int64_t, double, double, SpDCCols<int64_t, double>, SpDCCols<int64_t, double> >
+        // (A2D, B2D);
+        // eq = (C2D == C2DFrom1D);
+        // cout << "diagmulti" << eq << endl;
+        // Sp1D C1D = Mult_AnXBn_1D<PTFF, double, SpDCCols<int64_t, double>, int64_t, double, double, SpDCCols<int64_t, double>, SpDCCols<int64_t, double> >
+        // (A1D,B1D);
+        // SpParMat<int64_t, double, SpDCCols < int64_t, double >> B2D(A2D);
+        // t0 = MPI_Wtime();
+        // SpParMat<int64_t, double, SpDCCols < int64_t, double >> C2D = 
+        // Mult_AnXBn_Synch<PTFF, double, SpDCCols<int64_t, double>, int64_t, double, double, SpDCCols<int64_t, double>, SpDCCols<int64_t, double> >
+        // (A2D, B2D);
+        // t1 = MPI_Wtime();
+        // if(myrank == 0) fprintf(stderr, "Time 1D: %lf\n", t1-t0);
+        // Sp2D C2DFrom1D = Sp2D(C1D);
+        // eq = (C2D == C2DFrom1D);
+        // cout << "mult 1D correct " << eq << endl;
 #ifndef NDDEBUG
 #endif
-        auto nnz2d = A2D.getnnz();
-        if(myrank == 0) cout << " nnz in 2D " << nnz2d << endl;
+        // auto nnz2d = A2D.getnnz();
         // do diagonal and SB
-        Sp1D A1D_col(M,SpParMat1DTYPE::COLWISE); 
-        Sp1D Anew = A1D_col.Mult_AnXAn_1D();
-        Sp2D A2D_wodiag(M);
-        A2D_wodiag.RemoveDiagBlock(A1D_col.getblocksize());
-        Sp2D B2D_wodiag(A2D_wodiag);
-        Sp2D C2D_wodiag = Mult_AnXBn_Synch<PTFF, double, SpDCCols<int64_t, double>, int64_t, double, double, SpDCCols<int64_t, double>, SpDCCols<int64_t, double> >
-        (A2D_wodiag, B2D_wodiag);
-        Sp1D A1D_wodiag(C2D_wodiag,SpParMat1DTYPE::COLWISE);
-        A1D_col += A1D_wodiag;
+        // Sp1D A1D(A2D,SpParMat1DTYPE::COLWISE); 
+        // Sp1D B1D(A2D,SpParMat1DTYPE::COLWISE);
+        // Sp1D C1D = Mult_AnXBn_1D<PTFF, double, SpDCCols<int64_t, double>, int64_t, double, double, SpDCCols<int64_t, double>, SpDCCols<int64_t, double> >
+        // (A1D, B1D);
+        // Sp2D A2D_wodiag(M);
+        // A2D_wodiag.RemoveDiagBlock(A1D_col.getblocksize());
+        // Sp2D B2D_wodiag(A2D_wodiag);
+        // Sp2D C2D_wodiag = Mult_AnXBn_Synch<PTFF, double, SpDCCols<int64_t, double>, int64_t, double, double, SpDCCols<int64_t, double>, SpDCCols<int64_t, double> >
+        // (A2D_wodiag, B2D_wodiag);
+        // Sp1D A1D_wodiag(C2D_wodiag,SpParMat1DTYPE::COLWISE);
+        // A1D_col += A1D_wodiag;
+        // A1D_col.allclose(A2D_wodiag);
     }
     MPI_Finalize();
     return 0;

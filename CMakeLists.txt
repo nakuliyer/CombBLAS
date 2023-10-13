@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.3)
+cmake_minimum_required(VERSION 3.20)
 project(CombBLAS VERSION 2.0.1 LANGUAGES C CXX)
 
 # require c++14
@@ -112,12 +112,13 @@ install(
 )
 
 # Testing
-enable_testing()
-include(CTest)
+# enable_testing()
+# include(CTest)
 
-add_subdirectory(ReleaseTests)
+# add_subdirectory(ReleaseTests)
+# add_subdirectory(Applications)
+# add_subdirectory(Applications/Ordering)
+# add_subdirectory(Applications/BipartiteMatchings)
+# add_subdirectory(Applications/SpMSpV-IPDPS2017)
+# add_subdirectory(3DSpGEMM)
 add_subdirectory(Applications)
-add_subdirectory(Applications/Ordering)
-add_subdirectory(Applications/BipartiteMatchings)
-add_subdirectory(Applications/SpMSpV-IPDPS2017)
-add_subdirectory(3DSpGEMM)

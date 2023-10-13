@@ -942,6 +942,21 @@ Dcsc<IT,NT>* Dcsc<IT,NT>::PruneColumn(IT* pinds, NT* pvals, _BinaryOperation __b
 }
 
 template <class IT, class NT>
+void Dcsc<IT,NT>::EWiseScale(NT scaler)
+{
+	for(IT i=0; i<nzc; ++i)
+	{
+		IT colid = jc[i];
+		for(IT j=cp[i]; j < cp[i+1]; ++j)
+		{
+			IT rowid = ir[j];
+			numx[j] *= scaler;
+		}
+	}
+}
+
+
+template <class IT, class NT>
 void Dcsc<IT,NT>::EWiseScale(NT ** scaler)	
 {
 	for(IT i=0; i<nzc; ++i)

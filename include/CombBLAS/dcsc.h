@@ -66,6 +66,8 @@ public:
 	
 	void EWiseMult(const Dcsc<IT,NT> & rhs, bool exclude); 
 	void SetDifference(const Dcsc<IT,NT> & rhs);		//<! Aydin (June 2021): generalize this to any rhs NT type; as it isn't used anyway 
+
+	void EWiseScale(NT scaler);
 	void EWiseScale(NT ** scaler);				//<! scale elements of "this" with the elements dense rhs matrix
 	
 	template <typename IU, typename NU1, typename NU2>

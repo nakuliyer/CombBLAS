@@ -87,7 +87,7 @@ public:
 	SpParMat (const DistEdgeList< DELIT > & rhs, bool removeloops = true);	// conversion from distributed edge list
 
 	SpParMat (const SpParMat< IT,NT,DER > & rhs);				// copy constructor
-    
+    SpParMat (const SpParMat1D< IT,NT,DER > & rhs);				// constructor from a 1D SpParMat
 	SpParMat (IT total_m, IT total_n, const FullyDistVec<IT,IT> & , const FullyDistVec<IT,IT> & , const FullyDistVec<IT,NT> & , bool SumDuplicates = false);	// matlab sparse
 	SpParMat (IT total_m, IT total_n, const FullyDistVec<IT,IT> & , const FullyDistVec<IT,IT> & , const NT & , bool SumDuplicates = false);	// matlab sparse
 	SpParMat< IT,NT,DER > & operator=(const SpParMat< IT,NT,DER > & rhs);	// assignment operator
@@ -318,6 +318,7 @@ public:
 	BlockSplit (int br, int bc);
 	
 	void RemoveDiagBlock(int blocksize);
+	void KeepDiagBlock(int blocksize);
 	
 
 	//! Friend declarations

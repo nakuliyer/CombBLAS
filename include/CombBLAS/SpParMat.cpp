@@ -33,6 +33,7 @@
 #include "Operations.h"
 #include "FileHeader.h"
 #include "SpTuples.h"
+#include <cstring>
 #include <tuple>
 #include <vector>
 extern "C" {
@@ -722,6 +723,42 @@ SpParMat< IT,NT,DER >::SpParMat (const SpParMat< IT,NT,DER > & rhs)
 		spSeq = new DER(*(rhs.spSeq));  	// Deep copy of local block
 
 	commGrid =  rhs.commGrid;
+}
+
+template <class IT, class NT, class DER>
+SpParMat< IT,NT,DER >::SpParMat (const SpParMat1D< IT,NT,DER > & spmat1d)
+{
+	spSeq = NULL;
+	commGrid = make_shared<CommGrid>(MPI_COMM_WORLD,0,0);
+	int pr2d = commGrid->GetGridRows();
+	int pc2d = commGrid->GetGridCols();
+	int rowrank2d = commGrid->GetRankInProcRow();
+	int colrank2d = commGrid->GetRankInProcCol();
+	IT nrows = spmat1d.getnrow();
+	IT ncols = spmat1d.getncol();
+	IT m_perproc2d = nrows / pr2d;
+	IT n_perproc2d = ncols / pc2d;
+	IT localRowStart2d = colrank2d * m_perproc2d; // first row in this process
+	IT localColStart2d = rowrank2d * n_perproc2d; // first col in this process
+	IT lrow1d, lcol1d;
+	int nprocs = commGrid->GetSize();
+	std::vector<IT> tsendcnt(nprocs,0);
+	std::vector< std::vector < std::tuple<IT,IT,NT> > > data(nprocs);
+	IT lrow,lcol;
+	for(typename DER::SpColIter colit = spmat1d.spSeq->begcol(); colit != spmat1d.spSeq->endcol(); ++colit)
+	{
+		IT gcol = colit.colid() + spmat1d.colprefix;
+		for(typename DER::SpColIter::NzIter nzit = spmat1d.spSeq->begnz(colit); nzit != spmat1d.spSeq->endnz(colit); ++nzit)
+		{
+			IT grow = nzit.rowid();
+			NT val = nzit.value();
+			int owner = Owner(nrows, nrows, grow, gcol, lrow, lcol);
+			data[owner].push_back(std::make_tuple(lrow,lcol,val));
+		}
+	}
+	IT locsize = 0;
+	for(int i=0; i<data.size(); i++) locsize += data[i].size();
+	SparseCommon(data, locsize, nrows, nrows, maximum<double>());
 }
 
 template <class IT, class NT, class DER>
@@ -2965,13 +3002,43 @@ void SpParMat< IT,NT,DER >::SparseCommon(std::vector< std::vector < std::tuple<L
 	else 	locrows = total_m - myprocrow * m_perproc;
 	if(myproccol != s-1)	loccols = n_perproc;
 	else	loccols = total_n - myproccol * n_perproc;
-    
+
 	SpTuples<LIT,NT> A(totrecv, locrows, loccols, recvdata);	// It is ~SpTuples's job to deallocate
 	
-    	// the previous constructor sorts based on columns-first (but that doesn't matter as long as they are sorted one way or another)
-    	A.RemoveDuplicates(BinOp);
-	
-  	spSeq = new DER(A,false);        // Convert SpTuples to DER
+	// the previous constructor sorts based on columns-first (but that doesn't matter as long as they are sorted one way or another)
+	A.RemoveDuplicates(BinOp);
+
+	spSeq = new DER(A,false);        // Convert SpTuples to DER
+}
+
+template <class IT, class NT, class DER>
+void SpParMat<IT, NT, DER>::KeepDiagBlock(int blocksize)
+{
+	typedef typename DER::LocalIT LIT;
+	std::vector<std::tuple<LIT,LIT,NT>> removedtuples;
+	IT	g_nr   = this->getnrow();
+	IT	g_nc   = this->getncol();
+	int np	 = commGrid->GetSize();
+	int rank = commGrid->GetRank();
+	IT	g_rbeg = (g_nr/commGrid->GetGridRows()) * commGrid->GetRankInProcCol();
+	IT	g_cbeg = (g_nc/commGrid->GetGridCols()) * commGrid->GetRankInProcRow();
+	int lrow = spSeq->getnrow();
+	int lcol = spSeq->getncol();
+	SpTuples<IT, NT> tuples(*spSeq);
+	std::vector<std::tuple<IT,IT,NT>> newtuples;
+	for (int64_t i = 0; i < tuples.getnnz(); ++i)
+	{
+		IT g_ridx = g_rbeg + tuples.rowindex(i);
+		IT g_cidx = g_cbeg + tuples.colindex(i);
+		IT ni = g_ridx / blocksize;
+        IT nj = g_cidx / blocksize;
+		if (ni != nj) continue; // remove offdiag part
+		newtuples.push_back(std::make_tuple(tuples.rowindex(i),tuples.colindex(i),tuples.numvalue(i)));
+	}
+	delete spSeq;
+	SpTuples<IT, NT> newsptuples(newtuples.size(), lrow, lcol, newtuples.data());
+	newsptuples.tuples_deleted = true;
+	spSeq = new DER(newsptuples,false);
 }
 
 /**
@@ -4010,43 +4077,9 @@ FullyDistVec<IT,std::array<char, MAXVERTNAME> > SpParMat< IT,NT,DER >::ReadGener
     if(spSeq)   delete spSeq;
     SparseCommon(data, locsize, totallength, totallength, BinOp);
     // PrintInfo();
-    // distmapper.ParallelWrite("distmapper.mtx", 1, CharArraySaveHandler());
-	
-	cout << "Rank"<<myrank <<" map size " << ultimateperm.size() << endl;
-	// for(auto it=ultimateperm.begin(); it!= ultimateperm.end(); it++)
-	// {
-	// 	cout << it->first << "," << it->second << endl;
-	// }
-	// std::string jsonserial;
-	// nlohmann::json jsonData;
-	// for (const auto& pair : ultimateperm) {
-	// 	jsonData[pair.first] = pair.second;
-	// }
-	// jsonserial = jsonData.dump(4);
-	// std::vector<KEYMAP> allmap;
-	// for(int i=0; i<3; i++)
-	// {
-	// 	if(myrank == i+1)
-	// 	{
-	// 		long long sendcnt = jsonserial.size();
-	// 		MPI_Send(&sendcnt, 1, MPI_LONG_LONG, 0, 0, MPI_COMM_WORLD);
-	// 		MPI_Send(jsonserial.c_str(),jsonserial.size(),MPI_CHAR,0,1,MPI_COMM_WORLD);
-	// 	}else if(myrank == 0)
-	// 	{
-	// 		long long recvcnt;
-	// 		MPI_Recv(&recvcnt, 1, MPI_LONG_LONG, i+1, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-	// 		cout << "recv " << recvcnt << " from " << i+1 << endl;
-	// 		char * tmpc = new char[recvcnt];
-	// 		MPI_Recv(tmpc,recvcnt,MPI_CHAR,i+1,1,MPI_COMM_WORLD,MPI_STATUS_IGNORE);
-	// 		nlohmann::json jsondata = nlohmann::json::parse(std::string(tmpc));
-	// 		KEYMAP tmp = jsondata;
-	// 		allmap.push_back(tmp);
-	// 	}
-	// }
-	// if(myrank == 0)
-	// {
-		
-	// }
+#ifndef NDDEBUG
+    distmapper.ParallelWrite("distmapper.mtx", 1, CharArraySaveHandler());
+#endif
     return distmapper; 
 }
 

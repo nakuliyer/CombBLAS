@@ -4,6 +4,7 @@
 #include <iostream>
 #include <fstream>
 #include <cmath>
+#include <memory>
 #include <mpi.h>
 #include <tuple>
 #include <vector>
@@ -31,6 +32,8 @@
 
 namespace combblas
 {
+template <class IT, class NT>
+std::tuple<IT,IT,NT>* ExchangeDataGeneral(std::vector<std::vector<std::tuple<IT,IT,NT>>> & tempTuples, MPI_Comm World, IT& datasize);
 
     enum SpParMat1DTYPE{
         ROWWISE = 1,
@@ -48,13 +51,23 @@ namespace combblas
         typedef std::vector<std::vector<std::tuple<IT,IT,NT>>> vvtuple;
         // Constructors
         SpParMat1D (const SpParMat < IT,NT,DER > & A2D, SpParMat1DTYPE type);
+        SpParMat1D (std::shared_ptr<CommGrid1D> commgrid, SpParMat1DTYPE type=SpParMat1DTYPE::COLWISE);
         ~SpParMat1D ();
         int Owner(IT grow, IT gcol, IT & lrow, IT & lcol,SpParMat1DTYPE type) const;
-        SpParMat1D<IT,NT,DER> Mult_AnXAn_1D();
         SpParMat1D< IT,NT,DER > & operator+=(const SpParMat1D< IT,NT,DER > & rhs);
         void Prune();
-        DER * localdiag();
         IT getblocksize(){return blocksize;}
+        bool allclose(const SpParMat1D< IT,NT,DER > & rhs);
+        SpParMat<IT, NT, DER> ConvertTo2D();
+        template <typename SR, typename NUO, typename UDERO, typename IU, typename NU1, typename NU2, typename UDERA, typename UDERB> 
+        friend SpParMat1D<IU, NUO, UDERO> Mult_AnXBn_1D(SpParMat1D<IU,NU1,UDERA> & A, SpParMat1D<IU,NU2,UDERB> & B, bool clearA, bool clearB );
+#ifndef NDDEBUG
+        template <typename SR, typename NUO, typename UDERO, typename IU, typename NU1, typename NU2, typename UDERA, typename UDERB> 
+        friend SpParMat1D<IU, NUO, UDERO> Mult_AnXBn_Diag(SpParMat1D<IU,NU1,UDERA> & A, SpParMat1D<IU,NU2,UDERB> & B, bool clearA, bool clearB );
+#endif
+        IT getnrow() const;
+        IT getncol() const;
+        friend class SpParMat<IT, NT, DER>;
     private:
         DER * spSeq;
         std::shared_ptr<CommGrid1D> grid1d;
