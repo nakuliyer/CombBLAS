@@ -5,8 +5,8 @@ import sys
 if len(sys.argv) < 2:
     print("usage: python convertindextriple2mtx.py index.triple.file")
     sys.exit()
-# infile = sys.argv[1]
-infile = "/Users/hongy0a/Documents/dataset/HipMCL/vir_vs_vir_30_50length.indexed.triples"
+infile = sys.argv[1]
+# infile = "/Users/hongy0a/Documents/dataset/HipMCL/vir_vs_vir_30_50length.indexed.triples"
 outfile = infile + '.mtx'
 
 # read distmapper.mtx 
