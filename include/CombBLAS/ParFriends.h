@@ -44,6 +44,7 @@
 #include "mtSpGEMM.h"
 #include "MultiwayMerge.h"
 #include <stdint.h>
+#include <sys/_types/_int64_t.h>
 #include <tuple>
 #include <unistd.h>
 #include <type_traits>
@@ -1115,18 +1116,18 @@ SpParMat<IU, NUO, UDERO> Mult_AnXBn_Synch
 template <typename SR, typename NUO, typename UDERO, typename IU, typename NU1, typename NU2, typename UDERA, typename UDERB> 
 SpParMat1D<IU, NUO, UDERO> Mult_AnXBn_Diag(SpParMat1D<IU,NU1,UDERA> & A, SpParMat1D<IU,NU2,UDERB> & B, bool clearA = false, bool clearB = false )
     {
+        double t0,t1;
         auto grid1d = A.grid1d;
         int nprocs = grid1d->GetSize();
         auto totallength = A.getnrow();
-        cout << "total length " << totallength << endl;
         int myrank = grid1d->GetRank();
+        assert(A.blocksize == B.blocksize);
         auto blocksize = A.blocksize;
         typedef PlusTimesSRing<double, double> PTFF;
         const int tmp = (totallength + nprocs - 1) / nprocs;
-        cout << "tmp " << tmp << endl;
-        // extract diag block for A
-        
         std::vector< std::tuple<IU,IU, NUO>> diagtuple;
+
+        // extract diag block for A
         UDERA * spSeqA = A.spSeq;
         IU colprefixA = A.colprefix;
         for(typename UDERO::SpColIter colit = spSeqA->begcol(); colit != spSeqA->endcol(); ++colit)
@@ -1135,10 +1136,7 @@ SpParMat1D<IU, NUO, UDERO> Mult_AnXBn_Diag(SpParMat1D<IU,NU1,UDERA> & A, SpParMa
             for(typename UDERO::SpColIter::NzIter nzit = spSeqA->begnz(colit); nzit != spSeqA->endnz(colit); ++nzit)
             {
                 IU grow = nzit.rowid();
-                if(grow / tmp != gcol / tmp){
-                    cout << "exists  offdiag elements" << endl; 
-                    continue; // by pass offdiag part
-                } 
+                if(grow / tmp != gcol / tmp) continue; // by pass offdiag part
                 diagtuple.push_back(std::make_tuple(grow-tmp*myrank, colit.colid(), nzit.value()));
             }
         }
@@ -1165,9 +1163,15 @@ SpParMat1D<IU, NUO, UDERO> Mult_AnXBn_Diag(SpParMat1D<IU,NU1,UDERA> & A, SpParMa
         memcpy(spB,diagtuple.data(), sizeof(std::tuple<IU,IU,NUO>)*diagtuple.size());
         SpTuples<IU, NUO> sptupleB(diagtuple.size(),blocksize,blocksize,spB);
         UDERB *spmatB = new UDERB(sptupleB,false);
+        
+        // MPI_Barrier(MPI_COMM_WORLD); t0 = MPI_Wtime();
 
-        auto retSpTuples = LocalSpGEMM<PTFF, double>(*spmatA, *spmatB, false, false); 
+        auto retSpTuples = LocalHybridSpGEMM<PTFF, double>(*spmatA, *spmatB, false, false); 
         UDERO *retSpDER = new UDERO(*retSpTuples,false);
+
+        // t1 = MPI_Wtime(); t1 = t1-t0; double maxt; MPI_Allreduce(&t1,&maxt,1,MPI_DOUBLE,MPI_MAX,MPI_COMM_WORLD);
+        // if (myrank == 0) printf("t1 t0 time is %.5f\n",maxt);
+        
         diagtuple.clear();
         for(typename UDERO::SpColIter colit = retSpDER->begcol(); colit != retSpDER->endcol(); ++colit)
         {
@@ -1178,7 +1182,6 @@ SpParMat1D<IU, NUO, UDERO> Mult_AnXBn_Diag(SpParMat1D<IU,NU1,UDERA> & A, SpParMa
                 diagtuple.push_back(std::make_tuple(grow + tmp * myrank, colit.colid(), nzit.value()));
             }
         }
-
         auto spC = new std::tuple<IU,IU,NUO>[diagtuple.size()];
         memcpy(spC,diagtuple.data(), sizeof(std::tuple<IU,IU,NUO>)*diagtuple.size());
         SpTuples<IU, NUO> sptupleC(diagtuple.size(),totallength,blocksize,spC);
@@ -1187,8 +1190,8 @@ SpParMat1D<IU, NUO, UDERO> Mult_AnXBn_Diag(SpParMat1D<IU,NU1,UDERA> & A, SpParMa
         ret1d.spSeq = spmatC;
         ret1d.blocksize = blocksize;
         ret1d.colprefix = myrank * tmp;
-        ret1d.colinmyrank = tmp;
-        if(myrank == nprocs -1 ) ret1d.colinmyrank = totallength - tmp * (nprocs-1);
+        ret1d.localcols = tmp;
+        if(myrank == nprocs -1 ) ret1d.localcols = totallength - tmp * (nprocs-1);
         return ret1d;
     }
 #endif 
@@ -1196,98 +1199,93 @@ template <typename SR, typename NUO, typename UDERO, typename IU, typename NU1, 
 SpParMat1D<IU, NUO, UDERO> Mult_AnXBn_1D(SpParMat1D<IU,NU1,UDERA> & A, SpParMat1D<IU,NU2,UDERB> & B, bool clearA = false, bool clearB = false )
     {
         double t0,t1;
-        typedef PlusTimesSRing<double, double> PTFF;
+        
         auto grid1d = A.grid1d;
-        auto blocksize = A.blocksize;
-        auto totallength = A.nrow;
-        int myrank = grid1d->GetRank();
-        IU diagrowsmax = blocksize * (myrank+1);
-        
-        // get diag block 
         int nprocs = grid1d->GetSize();
+        auto totallength = A.getnrow();
+        int myrank = grid1d->GetRank();
+        assert(A.blocksize == B.blocksize);
+        auto blocksize = A.blocksize;
+        typedef PlusTimesSRing<double, double> PTFF;
         const int tmp = (totallength + nprocs - 1) / nprocs;
-        
-        std::vector< std::tuple<IU,IU, NUO>> diagtuple;
+        std::vector< std::tuple<IU,IU, NUO>> tuplevec;
+        std::vector<IU> sendcnt(nprocs,0);
+        std::vector< std::vector< std::tuple<IU,IU, NUO> > > sendtuples (nprocs);
+        IU datasize;
+        std::tuple<IU,IU,NUO>* recvTuples;
+
         // extract diag block for B
-        UDERB * spSeq = B.spSeq;
-        IU colprefix = B.colprefix;
-        for(typename UDERO::SpColIter colit = spSeq->begcol(); colit != spSeq->endcol(); ++colit)
+        tuplevec.clear();
+        UDERB * spSeqB = B.spSeq;
+        IU colprefixB = B.colprefix;
+        for(typename UDERO::SpColIter colit = spSeqB->begcol(); colit != spSeqB->endcol(); ++colit)
         {
-            IU gcol = colit.colid() + colprefix;
-            for(typename UDERO::SpColIter::NzIter nzit = spSeq->begnz(colit); nzit != spSeq->endnz(colit); ++nzit)
+            IU gcol = colit.colid() + colprefixB;
+            for(typename UDERO::SpColIter::NzIter nzit = spSeqB->begnz(colit); nzit != spSeqB->endnz(colit); ++nzit)
             {
                 IU grow = nzit.rowid();
                 if(grow / tmp != gcol / tmp) continue; // by pass offdiag part
-                diagtuple.push_back(std::make_tuple(grow - tmp*myrank, colit.colid(), nzit.value()));
-                if(grow > diagrowsmax)break;
+                tuplevec.push_back(std::make_tuple(grow-tmp*myrank, colit.colid(), nzit.value()));
             }
         }
-        SpTuples<IU, NUO> sptuple(diagtuple.size(),blocksize,blocksize,diagtuple.data());
-        sptuple.tuples_deleted = true;
-        UDERB *spmat = new UDERB(sptuple,false);
+        auto Bdiagptr = new std::tuple<IU,IU,NUO>[tuplevec.size()];
+        memcpy(Bdiagptr,tuplevec.data(), sizeof(std::tuple<IU,IU,NUO>)*tuplevec.size());
+        SpTuples<IU, NUO> sptupleB(tuplevec.size(),blocksize,blocksize,Bdiagptr);
+        UDERB *BDiagDER = new UDERB(sptupleB,false);
+        // extract diag block for B ends
         
+        auto sbb2Tuples = LocalHybridSpGEMM<PTFF, double>(*A.spSeq, *BDiagDER, false, false);  // SB + B^2
+        UDERO *sbb2DER = new UDERO(*sbb2Tuples,false);
         
-        auto retSpTuples = LocalHybridSpGEMM<PTFF, double>(*A.spSeq, *spmat, false, false);  // SB + B^2
-        UDERO *retSpDER = new UDERO(*retSpTuples,false);
-        
-        // transpose offdiag
-        std::vector<IU> sendcnt(nprocs,0);
-        std::vector< std::vector< std::tuple<IU,IU, NUO> > > sendtuples (nprocs);
-        for(typename UDERB::SpColIter colit = spSeq->begcol(); colit != spSeq->endcol(); ++colit)
+        // transpose offdiag of B
+        sendcnt.clear();
+        sendtuples.clear();
+        for(typename UDERB::SpColIter colit = spSeqB->begcol(); colit != spSeqB->endcol(); ++colit)
         {
-            IU gcol = colit.colid() + colprefix;
-            for(typename UDERB::SpColIter::NzIter nzit = spSeq->begnz(colit); nzit != spSeq->endnz(colit); ++nzit)
+            IU gcol = colit.colid() + colprefixB;
+            for(typename UDERB::SpColIter::NzIter nzit = spSeqB->begnz(colit); nzit != spSeqB->endnz(colit); ++nzit)
             {
                 IU grow = nzit.rowid();
-                if(grow / tmp == gcol / tmp) continue;
                 int transposeowner = grow / tmp;
+                if( grow/tmp == gcol/tmp) continue;
                 sendtuples[transposeowner].push_back(std::make_tuple(gcol, grow - transposeowner * tmp, nzit.value()));
             }
         }
         for(int i=0;i<sendtuples.size();i++)sendcnt[i] = sendtuples[i].size();
-        IU datasize;
-        
-        
-        std::tuple<IU,IU,NUO>* recvTuples = ExchangeDataGeneral(sendtuples, MPI_COMM_WORLD, datasize);
-        
-        IU colinmyrank = B.colinmyrank;
-        SpTuples<IU, NUO> offspTuples(datasize, totallength, colinmyrank, recvTuples);
-        UDERB *offdiagtrans = new UDERB(offspTuples,false);
-        
+        recvTuples = ExchangeDataGeneral(sendtuples, MPI_COMM_WORLD, datasize);
+        SpTuples<IU, NUO> ExspTuples(datasize, totallength, blocksize, recvTuples);
+        UDERB *BOffdiagTransDER = new UDERB(ExspTuples,false);
         
         // get A diagblock transpose
-        // extract diag block for A
-        spSeq = A.spSeq;
-        colprefix = A.colprefix;
-        diagtuple.clear();
-        for(typename UDERO::SpColIter colit = spSeq->begcol(); colit != spSeq->endcol(); ++colit)
+        // extract diag block transpose for A
+        tuplevec.clear();
+        UDERB * spSeqA = A.spSeq;
+        IU colprefixA = A.colprefix;
+        for(typename UDERO::SpColIter colit = spSeqA->begcol(); colit != spSeqA->endcol(); ++colit)
         {
-            IU gcol = colit.colid() + colprefix;
-            for(typename UDERO::SpColIter::NzIter nzit = spSeq->begnz(colit); nzit != spSeq->endnz(colit); ++nzit)
+            IU gcol = colit.colid() + colprefixA;
+            for(typename UDERO::SpColIter::NzIter nzit = spSeqA->begnz(colit); nzit != spSeqA->endnz(colit); ++nzit)
             {
                 IU grow = nzit.rowid();
                 if(grow / tmp != gcol / tmp) continue; // by pass offdiag part
-                diagtuple.push_back(std::make_tuple(grow - tmp*myrank, colit.colid(), nzit.value()));
-                if(grow > diagrowsmax)break;
+                tuplevec.push_back(std::make_tuple(colit.colid(),grow-tmp*myrank, nzit.value()));
             }
         }
-        SpTuples<IU, NUO> sptupleA(diagtuple.size(),blocksize,blocksize,diagtuple.data());
-        sptupleA.tuples_deleted = true;
-        UDERA *spmatA = new UDERA(sptupleA,false);
+        auto Adiagptr = new std::tuple<IU,IU,NUO>[tuplevec.size()];
+        memcpy(Adiagptr,tuplevec.data(), sizeof(std::tuple<IU,IU,NUO>)*tuplevec.size());
+        SpTuples<IU, NUO> sptupleA(tuplevec.size(),blocksize,blocksize,Adiagptr);
+        UDERB *AdiagTransDER = new UDERB(sptupleA,false);
+        // extract diag block transpose for A ends
         
-        spmatA->Transpose();
-        
-        
-        auto retSpTuples2 = LocalHybridSpGEMM<PTFF, double>(*offdiagtrans, *spmat, false, false); // (S^TB^T)^T
-        
-        UDERO *retSpDER2 = new UDERO(*retSpTuples2,false);
+        auto stbtTuples = LocalHybridSpGEMM<PTFF, double>(*BOffdiagTransDER, *AdiagTransDER, false, false); // (S^TB^T)^T
+        UDERO *stbtDER = new UDERO(*stbtTuples,false);
         // transpose the result
         sendcnt.clear();
         sendtuples.clear();
-        for(typename UDERO::SpColIter colit = spSeq->begcol(); colit != spSeq->endcol(); ++colit)
+        for(typename UDERO::SpColIter colit = stbtDER->begcol(); colit != stbtDER->endcol(); ++colit)
         {
-            IU gcol = colit.colid() + colprefix;
-            for(typename UDERO::SpColIter::NzIter nzit = spSeq->begnz(colit); nzit != spSeq->endnz(colit); ++nzit)
+            IU gcol = colit.colid() + colprefixA;
+            for(typename UDERO::SpColIter::NzIter nzit = stbtDER->begnz(colit); nzit != stbtDER->endnz(colit); ++nzit)
             {
                 IU grow = nzit.rowid();
                 int transposeowner = grow / tmp;
@@ -1295,23 +1293,27 @@ SpParMat1D<IU, NUO, UDERO> Mult_AnXBn_1D(SpParMat1D<IU,NU1,UDERA> & A, SpParMat1
             }
         }
         for(int i=0;i<sendtuples.size();i++)sendcnt[i] = sendtuples[i].size();
-        std::tuple<IU,IU,NUO>* recvTuples2 = ExchangeDataGeneral(sendtuples, MPI_COMM_WORLD, datasize);
-        SpTuples<IU, NUO> offspTuples2(datasize, totallength, colinmyrank, recvTuples2);
-        offspTuples2.tuples_deleted = false;
-        UDERO * dtrans2 = new UDERO(offspTuples2, false);
-        *retSpDER2 += *dtrans2;
+        recvTuples = ExchangeDataGeneral(sendtuples, MPI_COMM_WORLD, datasize);
+        SpTuples<IU, NUO> offspTuples(datasize, totallength, blocksize, recvTuples);
+        delete stbtDER;
+        stbtDER = new UDERO(offspTuples, false);
+        *stbtDER += *sbb2DER;
+
+        MPI_Barrier(MPI_COMM_WORLD); t0 = MPI_Wtime();
+        // offdiag 2D
         SpParMat<IU, NUO, UDERO> offdiagA2D(A);
         SpParMat<IU, NUO, UDERO> offdiagB2D(B);
-        offdiagA2D.RemoveDiagBlock(A.blocksize);
-        offdiagB2D.RemoveDiagBlock(B.blocksize);
-        t0 = MPI_Wtime();
+        offdiagA2D.RemoveDiagBlock(tmp);
+        offdiagB2D.RemoveDiagBlock(tmp);
         SpParMat<int64_t, double, SpDCCols < int64_t, double >> offdiagC2D = 
         Mult_AnXBn_Synch<PTFF, double, SpDCCols<int64_t, double>, int64_t, double, double, SpDCCols<int64_t, double>, SpDCCols<int64_t, double> >
-        (offdiagA2D, offdiagB2D);
-        t1 = MPI_Wtime(); if(myrank == 0) fprintf(stderr, "p1: %lf\n", t1-t0);
-        SpParMat1D<IU, NUO, UDERO> offdiagC1D(offdiagC2D,SpParMat1DTYPE::COLWISE);
-        *offdiagC1D.spSeq += *retSpDER2;
-        return offdiagC1D;
+        (offdiagA2D, offdiagB2D); // S^TS^T
+        t1 = MPI_Wtime(); t1 = t1-t0; double maxt; MPI_Allreduce(&t1,&maxt,1,MPI_DOUBLE,MPI_MAX,MPI_COMM_WORLD);
+        if (myrank == 0) printf("t1 t0 time is %.5f\n",maxt);
+        SpParMat1D<IU, NUO, UDERO> C1D(offdiagC2D,SpParMat1DTYPE::COLWISE);
+        *C1D.spSeq += *stbtDER;
+        
+        return C1D;
     }
 
 

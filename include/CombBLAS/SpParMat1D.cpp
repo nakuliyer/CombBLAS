@@ -118,10 +118,11 @@ namespace combblas
         grid1d = std::make_shared<CommGrid1D>(MPI_COMM_WORLD);
         int nprocs = grid1d->worldsize;
         totallength = A2D.getnrow();
-        colinmyrank = (totallength + nprocs-1)/nprocs;
-        colprefix = colinmyrank * myrank;
-        if(myrank == nprocs-1) colinmyrank = totallength - colinmyrank * (nprocs-1);
-        blocksize = colinmyrank; // currently blocksize is number of local columns
+        colperrank = (totallength + nprocs -1) /nprocs;
+        colprefix = colperrank * myrank;
+        localcols = colperrank;
+        if(myrank == nprocs-1) localcols = totallength - colperrank * (nprocs-1);
+        blocksize = localcols; // currently blocksize is number of local columns
         auto commGrid2D = A2D.getcommgrid();
         // int nprocs = commGrid2D->GetSize();
         IT nrows = A2D.getnrow();
@@ -153,7 +154,7 @@ namespace combblas
         IT datasize;
         std::tuple<IT,IT,NT>* recvTuples = ExchangeDataGeneral(sendTuples, commGrid2D->GetWorld(), datasize);
         MPI_Barrier(MPI_COMM_WORLD);
-        SpTuples<IT, NT>spTuples(datasize, nrows, colinmyrank, recvTuples);
+        SpTuples<IT, NT>spTuples(datasize, nrows, localcols, recvTuples);
         if(this->spSeq) delete this->spSeq;
         this->spSeq = new DER(spTuples, false);
     }
@@ -209,36 +210,6 @@ namespace combblas
         }
         return totalrows;
     }
-
-    template <class IT, class NT,class DER>
-    bool SpParMat1D< IT,NT,DER >::allclose(const SpParMat1D< IT,NT,DER > & rhs)
-    {
-        SpParMat1D<IT, NT, DER> mycopy(*this);
-        SpParMat1D<IT, NT, DER> rhscopy(rhs);
-        rhscopy.seqptr()->EWiseScale(-1);
-        mycopy += rhscopy;
-        return false;
-    }
-
-    // template<class IT, class NT, class DER>
-    // SpParMat<IT, NT, DER> SpParMat1D< IT,NT,DER >::ConvertTo2D()
-    // {
-    //     shared_ptr<CommGrid> commGrid2D = make_shared<CommGrid>(MPI_COMM_WORLD,0,0);
-    //     int pr2d = commGrid2D->GetGridRows();
-    //     int pc2d = commGrid2D->GetGridCols();
-    //     int rowrank2d = commGrid2D->GetRankInProcRow();
-    //     int colrank2d = commGrid2D->GetRankInProcCol();
-    //     IT nrows = getnrow();
-    //     IT ncols = getncol();
-    //     IT m_perproc2d = nrows / pr2d;
-    //     IT n_perproc2d = ncols / pc2d;
-    //     IT localRowStart2d = colrank2d * m_perproc2d; // first row in this process
-    //     IT localColStart2d = rowrank2d * n_perproc2d; // first col in this process
-    //     IT lrow1d, lcol1d;
-    //     std::vector<IT> tsendcnt(nprocs,0);
-    //     std::vector< std::vector< std::tuple<IT,IT, NT> > > sendTuples (nprocs);
-
-    // }
 }
 
 

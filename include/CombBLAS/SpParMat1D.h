@@ -55,10 +55,6 @@ std::tuple<IT,IT,NT>* ExchangeDataGeneral(std::vector<std::vector<std::tuple<IT,
         ~SpParMat1D ();
         int Owner(IT grow, IT gcol, IT & lrow, IT & lcol,SpParMat1DTYPE type) const;
         SpParMat1D< IT,NT,DER > & operator+=(const SpParMat1D< IT,NT,DER > & rhs);
-        void Prune();
-        IT getblocksize(){return blocksize;}
-        bool allclose(const SpParMat1D< IT,NT,DER > & rhs);
-        SpParMat<IT, NT, DER> ConvertTo2D();
         template <typename SR, typename NUO, typename UDERO, typename IU, typename NU1, typename NU2, typename UDERA, typename UDERB> 
         friend SpParMat1D<IU, NUO, UDERO> Mult_AnXBn_1D(SpParMat1D<IU,NU1,UDERA> & A, SpParMat1D<IU,NU2,UDERB> & B, bool clearA, bool clearB );
 #ifndef NDDEBUG
@@ -73,9 +69,10 @@ std::tuple<IT,IT,NT>* ExchangeDataGeneral(std::vector<std::vector<std::tuple<IT,
         std::shared_ptr<CommGrid1D> grid1d;
         SpParMat1DTYPE mattype;
         int blocksize;
+        IT localcols;  //  localcols equals colperrank except the last process, it may have less columns.
+        IT colperrank; //  colperrank := Totoal columns / Nprocs.
+        IT colprefix; 
         IT totallength;
-        IT colinmyrank;
-        IT colprefix;
     };
 }
 

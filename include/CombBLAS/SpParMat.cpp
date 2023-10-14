@@ -745,8 +745,6 @@ SpParMat< IT,NT,DER >::SpParMat (const SpParMat1D< IT,NT,DER > & spmat1d)
 	std::vector<IT> tsendcnt(nprocs,0);
 	std::vector< std::vector < std::tuple<IT,IT,NT> > > data(nprocs);
 	IT lrow,lcol;
-	cout<< "col prefix " << spmat1d.colprefix << endl;
-	cout << "nrows ncols " << nrows << "," << 	ncols << endl;
 	for(typename DER::SpColIter colit = spmat1d.spSeq->begcol(); colit != spmat1d.spSeq->endcol(); ++colit)
 	{
 		IT gcol = colit.colid() + spmat1d.colprefix;

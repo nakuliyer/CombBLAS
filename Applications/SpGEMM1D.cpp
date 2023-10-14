@@ -102,29 +102,28 @@ int main(int argc, char* argv[])
         Readingmatrix.ParallelReadMM(Aname + ".mtx",false,maximum<double>());
         t1 = MPI_Wtime();
         if(myrank == 0) fprintf(stderr, "Time taken to read file: %lf\n", t1-t0);
-        cout << Readingmatrix.getnrow() << endl;
         typedef PlusTimesSRing<double, double> PTFF;
         // Run 2D multiplication to compare against
         SpParMat<int64_t, double, SpDCCols < int64_t, double >> A2D(Readingmatrix);
         SpParMat<int64_t, double, SpDCCols < int64_t, double >> B2D(Readingmatrix);
         int64_t totallength = A2D.getnrow();
         const int TMP = (totallength + nprocs-1)/nprocs;
-        A2D.KeepDiagBlock(TMP);
-        B2D.KeepDiagBlock(TMP);
+        
         SpParMat1D<int64_t, double, SpDCCols<int64_t, double>> A1D(A2D,SpParMat1DTYPE::COLWISE);
         SpParMat1D<int64_t, double, SpDCCols<int64_t, double>> B1D(A2D,SpParMat1DTYPE::COLWISE);
-        
-        Sp1D C1D = Mult_AnXBn_Diag<PTFF, double, SpDCCols<int64_t, double>, int64_t, double, double, SpDCCols<int64_t, double>, SpDCCols<int64_t, double> >
+        Sp1D C1D = Mult_AnXBn_1D<PTFF, double, SpDCCols<int64_t, double>, int64_t, double, double, SpDCCols<int64_t, double>, SpDCCols<int64_t, double> >
         (A1D,B1D);
-        // // // cout << C1D.getnrow() << ", " << C1D.getncol() << endl;
         Sp2D C2DFrom1D(C1D);
-        C2DFrom1D.ParallelWriteMM(Aname+"_From1D.mtx",false);
-        cout<< "final in cpp " << C2DFrom1D.getnrow() << ", " << C2DFrom1D.getncol() << endl;
-        
+        // C2DFrom1D.ParallelWriteMM(Aname+"_From1D.mtx",false);
+        // A2D.KeepDiagBlock(TMP);
+        // B2D.KeepDiagBlock(TMP);
+        // MPI_Barrier(MPI_COMM_WORLD); t0 = MPI_Wtime();
         Sp2D C2D = 
         Mult_AnXBn_Synch<PTFF, double, SpDCCols<int64_t, double>, int64_t, double, double, SpDCCols<int64_t, double>, SpDCCols<int64_t, double> >
         (A2D, B2D);
-        cout << "in c check " << (C2DFrom1D == C2D) << endl;
+        // t1 = MPI_Wtime(); t1 = t1-t0; double maxt; MPI_Allreduce(&t1,&maxt,1,MPI_DOUBLE,MPI_MAX,MPI_COMM_WORLD);
+        // if (myrank == 0) printf("t1 t0 time is %.5f\n",maxt);
+        cout << "check1d " << (C2DFrom1D == C2D) << endl;
         // C2D.ParallelWriteMM(Aname+"_C.mtx",false);
         // eq = (C2D == C2DFrom1D);
         // cout << "diagmulti" << eq << endl;
