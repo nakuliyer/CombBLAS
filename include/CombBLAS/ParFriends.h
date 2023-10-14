@@ -44,7 +44,6 @@
 #include "mtSpGEMM.h"
 #include "MultiwayMerge.h"
 #include <stdint.h>
-#include <sys/_types/_int64_t.h>
 #include <tuple>
 #include <unistd.h>
 #include <type_traits>
