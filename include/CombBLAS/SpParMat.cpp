@@ -729,7 +729,7 @@ template <class IT, class NT, class DER>
 SpParMat< IT,NT,DER >::SpParMat (const SpParMat1D< IT,NT,DER > & spmat1d)
 {
 	spSeq = NULL;
-	commGrid = make_shared<CommGrid>(MPI_COMM_WORLD,0,0);
+	this->commGrid = make_shared<CommGrid>(MPI_COMM_WORLD,0,0);
 	int pr2d = commGrid->GetGridRows();
 	int pc2d = commGrid->GetGridCols();
 	int rowrank2d = commGrid->GetRankInProcRow();
@@ -745,6 +745,8 @@ SpParMat< IT,NT,DER >::SpParMat (const SpParMat1D< IT,NT,DER > & spmat1d)
 	std::vector<IT> tsendcnt(nprocs,0);
 	std::vector< std::vector < std::tuple<IT,IT,NT> > > data(nprocs);
 	IT lrow,lcol;
+	cout<< "col prefix " << spmat1d.colprefix << endl;
+	cout << "nrows ncols " << nrows << "," << 	ncols << endl;
 	for(typename DER::SpColIter colit = spmat1d.spSeq->begcol(); colit != spmat1d.spSeq->endcol(); ++colit)
 	{
 		IT gcol = colit.colid() + spmat1d.colprefix;
@@ -752,13 +754,13 @@ SpParMat< IT,NT,DER >::SpParMat (const SpParMat1D< IT,NT,DER > & spmat1d)
 		{
 			IT grow = nzit.rowid();
 			NT val = nzit.value();
-			int owner = Owner(nrows, nrows, grow, gcol, lrow, lcol);
+			int owner = Owner(nrows, ncols, grow, gcol, lrow, lcol);
 			data[owner].push_back(std::make_tuple(lrow,lcol,val));
 		}
 	}
 	IT locsize = 0;
 	for(int i=0; i<data.size(); i++) locsize += data[i].size();
-	SparseCommon(data, locsize, nrows, nrows, maximum<double>());
+	SparseCommon(data, locsize, nrows, ncols, maximum<double>());
 }
 
 template <class IT, class NT, class DER>
@@ -3032,7 +3034,7 @@ void SpParMat<IT, NT, DER>::KeepDiagBlock(int blocksize)
 		IT g_cidx = g_cbeg + tuples.colindex(i);
 		IT ni = g_ridx / blocksize;
         IT nj = g_cidx / blocksize;
-		if (ni != nj) continue; // remove offdiag part
+		if(g_ridx / blocksize != g_cidx / blocksize) continue;
 		newtuples.push_back(std::make_tuple(tuples.rowindex(i),tuples.colindex(i),tuples.numvalue(i)));
 	}
 	delete spSeq;
@@ -5225,6 +5227,7 @@ void SpParMat<IT,NT,DER>::GetPlaceInGlobalGrid(IT& rowOffset, IT& colOffset) con
 	
 	rowOffset = commGrid->GetRankInProcCol()*rows_perproc;
 	colOffset = commGrid->GetRankInProcRow()*cols_perproc;
+	// cout << "rowOffset " << rowOffset << " colOffset " << colOffset << endl;
 }
 	
 }

@@ -44,6 +44,7 @@
 #include "mtSpGEMM.h"
 #include "MultiwayMerge.h"
 #include <stdint.h>
+#include <tuple>
 #include <unistd.h>
 #include <type_traits>
 
@@ -1117,12 +1118,14 @@ SpParMat1D<IU, NUO, UDERO> Mult_AnXBn_Diag(SpParMat1D<IU,NU1,UDERA> & A, SpParMa
         auto grid1d = A.grid1d;
         int nprocs = grid1d->GetSize();
         auto totallength = A.getnrow();
+        cout << "total length " << totallength << endl;
         int myrank = grid1d->GetRank();
         auto blocksize = A.blocksize;
         typedef PlusTimesSRing<double, double> PTFF;
         const int tmp = (totallength + nprocs - 1) / nprocs;
-        IU diagrowsmax = blocksize * (myrank+1);
+        cout << "tmp " << tmp << endl;
         // extract diag block for A
+        
         std::vector< std::tuple<IU,IU, NUO>> diagtuple;
         UDERA * spSeqA = A.spSeq;
         IU colprefixA = A.colprefix;
@@ -1132,13 +1135,18 @@ SpParMat1D<IU, NUO, UDERO> Mult_AnXBn_Diag(SpParMat1D<IU,NU1,UDERA> & A, SpParMa
             for(typename UDERO::SpColIter::NzIter nzit = spSeqA->begnz(colit); nzit != spSeqA->endnz(colit); ++nzit)
             {
                 IU grow = nzit.rowid();
-                if(grow / tmp != gcol / tmp) continue; // by pass offdiag part
+                if(grow / tmp != gcol / tmp){
+                    cout << "exists  offdiag elements" << endl; 
+                    continue; // by pass offdiag part
+                } 
                 diagtuple.push_back(std::make_tuple(grow-tmp*myrank, colit.colid(), nzit.value()));
             }
         }
-        SpTuples<IU, NUO> sptupleA(diagtuple.size(),blocksize,blocksize,diagtuple.data());
-        sptupleA.tuples_deleted = true;
+        auto spA = new std::tuple<IU,IU,NUO>[diagtuple.size()];
+        memcpy(spA,diagtuple.data(), sizeof(std::tuple<IU,IU,NUO>)*diagtuple.size());
+        SpTuples<IU, NUO> sptupleA(diagtuple.size(),blocksize,blocksize,spA);
         UDERA *spmatA = new UDERA(sptupleA,false);
+        
         // extract diag block for B
         diagtuple.clear();
         UDERB * spSeqB = B.spSeq;
@@ -1153,29 +1161,34 @@ SpParMat1D<IU, NUO, UDERO> Mult_AnXBn_Diag(SpParMat1D<IU,NU1,UDERA> & A, SpParMa
                 diagtuple.push_back(std::make_tuple(grow-tmp*myrank, colit.colid(), nzit.value()));
             }
         }
-        SpTuples<IU, NUO> sptupleB(diagtuple.size(),blocksize,blocksize,diagtuple.data());
-        sptupleB.tuples_deleted = true;
+        auto spB = new std::tuple<IU,IU,NUO>[diagtuple.size()];
+        memcpy(spB,diagtuple.data(), sizeof(std::tuple<IU,IU,NUO>)*diagtuple.size());
+        SpTuples<IU, NUO> sptupleB(diagtuple.size(),blocksize,blocksize,spB);
         UDERB *spmatB = new UDERB(sptupleB,false);
+
         auto retSpTuples = LocalSpGEMM<PTFF, double>(*spmatA, *spmatB, false, false); 
-        // cout << "blocksize" << blocksize << endl;
-        // cout << "grow" << totallength << endl;
-        // cout << "ret sptuple row " <<retSpTuples->getnrow() << endl;
         UDERO *retSpDER = new UDERO(*retSpTuples,false);
         diagtuple.clear();
         for(typename UDERO::SpColIter colit = retSpDER->begcol(); colit != retSpDER->endcol(); ++colit)
         {
-            IU gcol = colit.colid() + colprefixB;
+            IU gcol = colit.colid();
             for(typename UDERO::SpColIter::NzIter nzit = retSpDER->begnz(colit); nzit != retSpDER->endnz(colit); ++nzit)
             {
                 IU grow = nzit.rowid();
-                if(grow / tmp != gcol / tmp) continue; // by pass offdiag part
                 diagtuple.push_back(std::make_tuple(grow + tmp * myrank, colit.colid(), nzit.value()));
             }
         }
-        SpTuples<IU,NUO> sptupleC(diagtuple.size(),totallength,blocksize,diagtuple.data());
-        sptupleC.tuples_deleted = true;
+
+        auto spC = new std::tuple<IU,IU,NUO>[diagtuple.size()];
+        memcpy(spC,diagtuple.data(), sizeof(std::tuple<IU,IU,NUO>)*diagtuple.size());
+        SpTuples<IU, NUO> sptupleC(diagtuple.size(),totallength,blocksize,spC);
+        UDERA *spmatC = new UDERA(sptupleC,false);
         SpParMat1D<IU, NUO, UDERO> ret1d(A.grid1d);
-        ret1d.spSeq = new UDERO(sptupleC,false);
+        ret1d.spSeq = spmatC;
+        ret1d.blocksize = blocksize;
+        ret1d.colprefix = myrank * tmp;
+        ret1d.colinmyrank = tmp;
+        if(myrank == nprocs -1 ) ret1d.colinmyrank = totallength - tmp * (nprocs-1);
         return ret1d;
     }
 #endif 
@@ -1214,7 +1227,7 @@ SpParMat1D<IU, NUO, UDERO> Mult_AnXBn_1D(SpParMat1D<IU,NU1,UDERA> & A, SpParMat1
         UDERB *spmat = new UDERB(sptuple,false);
         
         
-        auto retSpTuples = LocalSpGEMM<PTFF, double>(*A.spSeq, *spmat, false, false);  // SB + B^2
+        auto retSpTuples = LocalHybridSpGEMM<PTFF, double>(*A.spSeq, *spmat, false, false);  // SB + B^2
         UDERO *retSpDER = new UDERO(*retSpTuples,false);
         
         // transpose offdiag
@@ -1265,7 +1278,7 @@ SpParMat1D<IU, NUO, UDERO> Mult_AnXBn_1D(SpParMat1D<IU,NU1,UDERA> & A, SpParMat1
         spmatA->Transpose();
         
         
-        auto retSpTuples2 = LocalSpGEMM<PTFF, double>(*offdiagtrans, *spmat, false, false); // (S^TB^T)^T
+        auto retSpTuples2 = LocalHybridSpGEMM<PTFF, double>(*offdiagtrans, *spmat, false, false); // (S^TB^T)^T
         
         UDERO *retSpDER2 = new UDERO(*retSpTuples2,false);
         // transpose the result
