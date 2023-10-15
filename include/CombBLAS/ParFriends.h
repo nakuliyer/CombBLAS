@@ -1197,8 +1197,7 @@ SpParMat1D<IU, NUO, UDERO> Mult_AnXBn_Diag(SpParMat1D<IU,NU1,UDERA> & A, SpParMa
 template <typename SR, typename NUO, typename UDERO, typename IU, typename NU1, typename NU2, typename UDERA, typename UDERB> 
 SpParMat1D<IU, NUO, UDERO> Mult_AnXBn_1D(SpParMat1D<IU,NU1,UDERA> & A, SpParMat1D<IU,NU2,UDERB> & B, bool clearA = false, bool clearB = false )
     {
-        double t0,t1;
-        
+        double t0,t1,maxt;
         auto grid1d = A.grid1d;
         int nprocs = grid1d->GetSize();
         auto totallength = A.getnrow();
@@ -1212,7 +1211,9 @@ SpParMat1D<IU, NUO, UDERO> Mult_AnXBn_1D(SpParMat1D<IU,NU1,UDERA> & A, SpParMat1
         std::vector< std::vector< std::tuple<IU,IU, NUO> > > sendtuples (nprocs);
         IU datasize;
         std::tuple<IU,IU,NUO>* recvTuples;
-
+#ifndef NDDEBUG
+        MPI_Barrier(MPI_COMM_WORLD); t0 = MPI_Wtime();
+#endif
         // extract diag block for B
         tuplevec.clear();
         UDERB * spSeqB = B.spSeq;
@@ -1235,7 +1236,14 @@ SpParMat1D<IU, NUO, UDERO> Mult_AnXBn_1D(SpParMat1D<IU,NU1,UDERA> & A, SpParMat1
         
         auto sbb2Tuples = LocalHybridSpGEMM<PTFF, double>(*A.spSeq, *BDiagDER, false, false);  // SB + B^2
         UDERO *sbb2DER = new UDERO(*sbb2Tuples,false);
-        
+#ifndef NDDEBUG
+        t1 = MPI_Wtime(); t1 = t1-t0;MPI_Allreduce(&t1,&maxt,1,MPI_DOUBLE,MPI_MAX,MPI_COMM_WORLD);
+        if (myrank == 0) printf("SBB2 time is %.5f\n",maxt);
+#endif
+
+#ifndef NDDEBUG
+        MPI_Barrier(MPI_COMM_WORLD); t0 = MPI_Wtime();
+#endif
         // transpose offdiag of B
         sendcnt.clear();
         sendtuples.clear();
@@ -1297,8 +1305,13 @@ SpParMat1D<IU, NUO, UDERO> Mult_AnXBn_1D(SpParMat1D<IU,NU1,UDERA> & A, SpParMat1
         delete stbtDER;
         stbtDER = new UDERO(offspTuples, false);
         *stbtDER += *sbb2DER;
-
+#ifndef NDDEBUG
+        t1 = MPI_Wtime(); t1 = t1-t0;MPI_Allreduce(&t1,&maxt,1,MPI_DOUBLE,MPI_MAX,MPI_COMM_WORLD);
+        if (myrank == 0) printf("STBTT time is %.5f\n",maxt);
+#endif
+#ifndef NDDEBUG
         MPI_Barrier(MPI_COMM_WORLD); t0 = MPI_Wtime();
+#endif
         // offdiag 2D
         SpParMat<IU, NUO, UDERO> offdiagA2D(A);
         SpParMat<IU, NUO, UDERO> offdiagB2D(B);
@@ -1307,11 +1320,19 @@ SpParMat1D<IU, NUO, UDERO> Mult_AnXBn_1D(SpParMat1D<IU,NU1,UDERA> & A, SpParMat1
         SpParMat<int64_t, double, SpDCCols < int64_t, double >> offdiagC2D = 
         Mult_AnXBn_Synch<PTFF, double, SpDCCols<int64_t, double>, int64_t, double, double, SpDCCols<int64_t, double>, SpDCCols<int64_t, double> >
         (offdiagA2D, offdiagB2D); // S^TS^T
-        t1 = MPI_Wtime(); t1 = t1-t0; double maxt; MPI_Allreduce(&t1,&maxt,1,MPI_DOUBLE,MPI_MAX,MPI_COMM_WORLD);
-        if (myrank == 0) printf("t1 t0 time is %.5f\n",maxt);
+#ifndef NDDEBUG
+        t1 = MPI_Wtime(); t1 = t1-t0;MPI_Allreduce(&t1,&maxt,1,MPI_DOUBLE,MPI_MAX,MPI_COMM_WORLD);
+        if (myrank == 0) printf("Offdiag 2D Matmul time is %.5f\n",maxt);
+#endif
+#ifndef NDDEBUG
+        MPI_Barrier(MPI_COMM_WORLD); t0 = MPI_Wtime();
+#endif
         SpParMat1D<IU, NUO, UDERO> C1D(offdiagC2D,SpParMat1DTYPE::COLWISE);
         *C1D.spSeq += *stbtDER;
-        
+#ifndef NDDEBUG
+        t1 = MPI_Wtime(); t1 = t1-t0;MPI_Allreduce(&t1,&maxt,1,MPI_DOUBLE,MPI_MAX,MPI_COMM_WORLD);
+        if (myrank == 0) printf("Final merge time is %.5f\n",maxt);
+#endif
         return C1D;
     }
 

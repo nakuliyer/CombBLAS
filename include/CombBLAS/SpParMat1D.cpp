@@ -155,7 +155,6 @@ namespace combblas
         std::tuple<IT,IT,NT>* recvTuples = ExchangeDataGeneral(sendTuples, commGrid2D->GetWorld(), datasize);
         MPI_Barrier(MPI_COMM_WORLD);
         SpTuples<IT, NT>spTuples(datasize, nrows, localcols, recvTuples);
-        if(this->spSeq) delete this->spSeq;
         this->spSeq = new DER(spTuples, false);
     }
     

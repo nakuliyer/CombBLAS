@@ -92,7 +92,7 @@ int main(int argc, char* argv[])
         shared_ptr<CommGrid> fullWorld;
         fullWorld.reset( new CommGrid(MPI_COMM_WORLD, 0, 0) );
 
-        double t0, t1;
+        double t0, t1, maxt;
 
         SpParMat<int64_t, double, SpDCCols < int64_t, double >> Readingmatrix(fullWorld);
         
@@ -106,55 +106,27 @@ int main(int argc, char* argv[])
         // Run 2D multiplication to compare against
         SpParMat<int64_t, double, SpDCCols < int64_t, double >> A2D(Readingmatrix);
         SpParMat<int64_t, double, SpDCCols < int64_t, double >> B2D(Readingmatrix);
-        int64_t totallength = A2D.getnrow();
-        const int TMP = (totallength + nprocs-1)/nprocs;
-        
         SpParMat1D<int64_t, double, SpDCCols<int64_t, double>> A1D(A2D,SpParMat1DTYPE::COLWISE);
         SpParMat1D<int64_t, double, SpDCCols<int64_t, double>> B1D(A2D,SpParMat1DTYPE::COLWISE);
+        MPI_Barrier(MPI_COMM_WORLD); t0 = MPI_Wtime();
         Sp1D C1D = Mult_AnXBn_1D<PTFF, double, SpDCCols<int64_t, double>, int64_t, double, double, SpDCCols<int64_t, double>, SpDCCols<int64_t, double> >
         (A1D,B1D);
+        t1 = MPI_Wtime(); t1 = t1-t0; MPI_Allreduce(&t1,&maxt,1,MPI_DOUBLE,MPI_MAX,MPI_COMM_WORLD);
+        if (myrank == 0) printf("1D SpGEMM time is %.5f\n",maxt);
         Sp2D C2DFrom1D(C1D);
-        // C2DFrom1D.ParallelWriteMM(Aname+"_From1D.mtx",false);
-        // A2D.KeepDiagBlock(TMP);
-        // B2D.KeepDiagBlock(TMP);
-        // MPI_Barrier(MPI_COMM_WORLD); t0 = MPI_Wtime();
+        C2DFrom1D.ParallelWriteMM(Aname+"_From1D.mtx",false);
+        MPI_Barrier(MPI_COMM_WORLD); t0 = MPI_Wtime();
         Sp2D C2D = 
         Mult_AnXBn_Synch<PTFF, double, SpDCCols<int64_t, double>, int64_t, double, double, SpDCCols<int64_t, double>, SpDCCols<int64_t, double> >
         (A2D, B2D);
-        // t1 = MPI_Wtime(); t1 = t1-t0; double maxt; MPI_Allreduce(&t1,&maxt,1,MPI_DOUBLE,MPI_MAX,MPI_COMM_WORLD);
-        // if (myrank == 0) printf("t1 t0 time is %.5f\n",maxt);
-        cout << "check1d " << (C2DFrom1D == C2D) << endl;
-        // C2D.ParallelWriteMM(Aname+"_C.mtx",false);
-        // eq = (C2D == C2DFrom1D);
-        // cout << "diagmulti" << eq << endl;
-        // Sp1D C1D = Mult_AnXBn_1D<PTFF, double, SpDCCols<int64_t, double>, int64_t, double, double, SpDCCols<int64_t, double>, SpDCCols<int64_t, double> >
-        // (A1D,B1D);
-        // SpParMat<int64_t, double, SpDCCols < int64_t, double >> B2D(A2D);
-        // t0 = MPI_Wtime();
-        // SpParMat<int64_t, double, SpDCCols < int64_t, double >> C2D = 
-        // Mult_AnXBn_Synch<PTFF, double, SpDCCols<int64_t, double>, int64_t, double, double, SpDCCols<int64_t, double>, SpDCCols<int64_t, double> >
-        // (A2D, B2D);
-        // t1 = MPI_Wtime();
-        // if(myrank == 0) fprintf(stderr, "Time 1D: %lf\n", t1-t0);
-        // Sp2D C2DFrom1D = Sp2D(C1D);
-        // eq = (C2D == C2DFrom1D);
-        // cout << "mult 1D correct " << eq << endl;
+        t1 = MPI_Wtime(); t1 = t1-t0; MPI_Allreduce(&t1,&maxt,1,MPI_DOUBLE,MPI_MAX,MPI_COMM_WORLD);
+        if (myrank == 0) printf("2D SpGEMM time is %.5f\n",maxt);
+        int checkresults = (C2DFrom1D == C2D); int gcheck;
+        MPI_Allreduce(&checkresults, &gcheck, 1, MPI_INT, MPI_MIN, MPI_COMM_WORLD);
+        if(myrank == 0 && gcheck != 1) cout << "wrong results" << endl;
+        else if(myrank == 0) cout << "correct results" << endl;
 #ifndef NDDEBUG
 #endif
-        // auto nnz2d = A2D.getnnz();
-        // do diagonal and SB
-        // Sp1D A1D(A2D,SpParMat1DTYPE::COLWISE); 
-        // Sp1D B1D(A2D,SpParMat1DTYPE::COLWISE);
-        // Sp1D C1D = Mult_AnXBn_1D<PTFF, double, SpDCCols<int64_t, double>, int64_t, double, double, SpDCCols<int64_t, double>, SpDCCols<int64_t, double> >
-        // (A1D, B1D);
-        // Sp2D A2D_wodiag(M);
-        // A2D_wodiag.RemoveDiagBlock(A1D_col.getblocksize());
-        // Sp2D B2D_wodiag(A2D_wodiag);
-        // Sp2D C2D_wodiag = Mult_AnXBn_Synch<PTFF, double, SpDCCols<int64_t, double>, int64_t, double, double, SpDCCols<int64_t, double>, SpDCCols<int64_t, double> >
-        // (A2D_wodiag, B2D_wodiag);
-        // Sp1D A1D_wodiag(C2D_wodiag,SpParMat1DTYPE::COLWISE);
-        // A1D_col += A1D_wodiag;
-        // A1D_col.allclose(A2D_wodiag);
     }
     MPI_Finalize();
     return 0;
