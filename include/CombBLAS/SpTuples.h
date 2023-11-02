@@ -34,6 +34,7 @@
 #include <fstream>
 #include <cmath>
 #include <cassert>
+#include <parallel/algorithm>
 #include "CombBLAS.h"
 #include "SpMat.h"
 #include "SpDefs.h"
@@ -93,8 +94,7 @@ public:
 	{
 		RowLexiCompare<IT,NT> rowlexicogcmp;
 		if(!SpHelper::is_sorted(tuples, tuples+nnz, rowlexicogcmp))
-			sort(tuples , tuples+nnz, rowlexicogcmp);	
-
+			__gnu_parallel::sort(tuples , tuples+nnz, rowlexicogcmp);	
 		// Default "operator<" for tuples uses lexicographical ordering 
 		// However, cray compiler complains about it, so we use rowlexicogcmp
 	}
@@ -103,7 +103,8 @@ public:
 	{
 		ColLexiCompare<IT,NT> collexicogcmp;
 		if(!SpHelper::is_sorted(tuples, tuples+nnz, collexicogcmp))
-			sort(tuples , tuples+nnz, collexicogcmp );
+        __gnu_parallel::sort(tuples , tuples+nnz, collexicogcmp);
+		// sort(std::execution::par_unseq,tuples , tuples+nnz, collexicogcmp );
 	}
 
 	/**
