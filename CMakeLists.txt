@@ -122,3 +122,5 @@ add_subdirectory(ReleaseTests)
 # add_subdirectory(Applications/SpMSpV-IPDPS2017)
 # add_subdirectory(3DSpGEMM)
 add_subdirectory(Applications)
+
+add_definitions(-DTIMGING)

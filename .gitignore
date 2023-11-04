@@ -24,3 +24,5 @@ test/temp_fullydistvec
 SpGEMM3D
 mcl3d
 slurm*.out
+libgraph_generator_seq.a
+*_trace

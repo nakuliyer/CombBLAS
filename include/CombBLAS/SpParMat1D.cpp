@@ -153,7 +153,6 @@ namespace combblas
         for(int i=0; i<sendTuples.size(); i++) tsendcnt[i] = sendTuples[i].size();
         IT datasize;
         std::tuple<IT,IT,NT>* recvTuples = ExchangeDataGeneral(sendTuples, commGrid2D->GetWorld(), datasize);
-        MPI_Barrier(MPI_COMM_WORLD);
         SpTuples<IT, NT>spTuples(datasize, nrows, localcols, recvTuples);
         this->spSeq = new DER(spTuples, false);
     }

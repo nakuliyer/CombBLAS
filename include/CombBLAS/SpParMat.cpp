@@ -726,7 +726,7 @@ SpParMat< IT,NT,DER >::SpParMat (const SpParMat< IT,NT,DER > & rhs)
 }
 
 template <class IT, class NT, class DER>
-SpParMat< IT,NT,DER >::SpParMat (const SpParMat1D< IT,NT,DER > & spmat1d)
+SpParMat< IT,NT,DER >::SpParMat (const SpParMat1D< IT,NT,DER > & spmat1d, int diagsize, bool keepdiag)
 {
 	spSeq = NULL;
 	this->commGrid = make_shared<CommGrid>(MPI_COMM_WORLD,0,0);
@@ -753,7 +753,23 @@ SpParMat< IT,NT,DER >::SpParMat (const SpParMat1D< IT,NT,DER > & spmat1d)
 			IT grow = nzit.rowid();
 			NT val = nzit.value();
 			int owner = Owner(nrows, ncols, grow, gcol, lrow, lcol);
-			data[owner].push_back(std::make_tuple(lrow,lcol,val));
+			// data[owner].push_back(std::make_tuple(lrow,lcol,val));
+
+			if(diagsize == 0){
+				data[owner].push_back(std::make_tuple(lrow,lcol,val));
+			}
+			else{
+				IT ni = grow / diagsize;
+				IT nj = gcol / diagsize;
+				if(ni == nj)
+				{
+					if(keepdiag) data[owner].push_back(std::make_tuple(lrow,lcol,val));
+				}else
+				{
+					data[owner].push_back(std::make_tuple(lrow,lcol,val));
+				}
+			}
+
 		}
 	}
 	IT locsize = 0;
@@ -3006,7 +3022,7 @@ void SpParMat< IT,NT,DER >::SparseCommon(std::vector< std::vector < std::tuple<L
 	SpTuples<LIT,NT> A(totrecv, locrows, loccols, recvdata);	// It is ~SpTuples's job to deallocate
 	
 	// the previous constructor sorts based on columns-first (but that doesn't matter as long as they are sorted one way or another)
-	A.RemoveDuplicates(BinOp);
+	// A.RemoveDuplicates(BinOp);
 
 	spSeq = new DER(A,false);        // Convert SpTuples to DER
 }

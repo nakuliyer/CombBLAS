@@ -1197,7 +1197,9 @@ SpParMat1D<IU, NUO, UDERO> Mult_AnXBn_Diag(SpParMat1D<IU,NU1,UDERA> & A, SpParMa
 template <typename SR, typename NUO, typename UDERO, typename IU, typename NU1, typename NU2, typename UDERA, typename UDERB> 
 SpParMat1D<IU, NUO, UDERO> Mult_AnXBn_1D(SpParMat1D<IU,NU1,UDERA> & A, SpParMat1D<IU,NU2,UDERB> & B, bool clearA = false, bool clearB = false )
     {
-        double t0,t1,maxt;
+        double t0,t1,maxt, t2,t3;
+        double t4,t5;
+        maxt = 0.0;
         auto grid1d = A.grid1d;
         int nprocs = grid1d->GetSize();
         auto totallength = A.getnrow();
@@ -1211,7 +1213,7 @@ SpParMat1D<IU, NUO, UDERO> Mult_AnXBn_1D(SpParMat1D<IU,NU1,UDERA> & A, SpParMat1
         std::vector< std::vector< std::tuple<IU,IU, NUO> > > sendtuples (nprocs);
         IU datasize;
         std::tuple<IU,IU,NUO>* recvTuples;
-#ifndef NDDEBUG
+#ifndef TIMGING
         MPI_Barrier(MPI_COMM_WORLD); t0 = MPI_Wtime();
 #endif
         // extract diag block for B
@@ -1230,18 +1232,17 @@ SpParMat1D<IU, NUO, UDERO> Mult_AnXBn_1D(SpParMat1D<IU,NU1,UDERA> & A, SpParMat1
         }
         auto Bdiagptr = new std::tuple<IU,IU,NUO>[tuplevec.size()];
         memcpy(Bdiagptr,tuplevec.data(), sizeof(std::tuple<IU,IU,NUO>)*tuplevec.size());
-        SpTuples<IU, NUO> sptupleB(tuplevec.size(),blocksize,blocksize,Bdiagptr);
+        SpTuples<IU, NUO> sptupleB(tuplevec.size(),blocksize,blocksize,Bdiagptr,true,false);
         UDERB *BDiagDER = new UDERB(sptupleB,false);
         // extract diag block for B ends
-        
         auto sbb2Tuples = LocalHybridSpGEMM<PTFF, double>(*A.spSeq, *BDiagDER, false, false);  // SB + B^2
         UDERO *sbb2DER = new UDERO(*sbb2Tuples,false);
-#ifndef NDDEBUG
-        t1 = MPI_Wtime(); t1 = t1-t0;MPI_Allreduce(&t1,&maxt,1,MPI_DOUBLE,MPI_MAX,MPI_COMM_WORLD);
-        if (myrank == 0) printf("SBB2 time is %.5f\n",maxt);
+#ifndef TIMGING
+        MPI_Barrier(MPI_COMM_WORLD);t1 = MPI_Wtime(); t1 = t1-t0;MPI_Allreduce(&t1,&maxt,1,MPI_DOUBLE,MPI_MAX,MPI_COMM_WORLD);
+        if (myrank == 0) printf("SBB2 Part 1 time is %.5f\n",maxt);maxt = 0.0;
 #endif
 
-#ifndef NDDEBUG
+#ifndef TIMGING
         MPI_Barrier(MPI_COMM_WORLD); t0 = MPI_Wtime();
 #endif
         // transpose offdiag of B
@@ -1259,10 +1260,24 @@ SpParMat1D<IU, NUO, UDERO> Mult_AnXBn_1D(SpParMat1D<IU,NU1,UDERA> & A, SpParMat1
             }
         }
         for(int i=0;i<sendtuples.size();i++)sendcnt[i] = sendtuples[i].size();
+#ifndef TIMGING
+        MPI_Barrier(MPI_COMM_WORLD); t4 = MPI_Wtime();
+#endif
         recvTuples = ExchangeDataGeneral(sendtuples, MPI_COMM_WORLD, datasize);
+#ifndef TIMGING
+        MPI_Barrier(MPI_COMM_WORLD);t5 = MPI_Wtime(); t5 = t5-t4;MPI_Allreduce(&t5,&maxt,1,MPI_DOUBLE,MPI_MAX,MPI_COMM_WORLD);
+        if (myrank == 0) printf("trans.comm S2T time is %.5f\n",maxt);maxt = 0.0;
+#endif
+#ifndef TIMGING
+        MPI_Barrier(MPI_COMM_WORLD); t4 = MPI_Wtime();
+#endif
         SpTuples<IU, NUO> ExspTuples(datasize, totallength, blocksize, recvTuples);
         UDERB *BOffdiagTransDER = new UDERB(ExspTuples,false);
-        
+#ifndef TIMGING
+        MPI_Barrier(MPI_COMM_WORLD);t5 = MPI_Wtime(); t5 = t5-t4;MPI_Allreduce(&t5,&maxt,1,MPI_DOUBLE,MPI_MAX,MPI_COMM_WORLD);
+        if (myrank == 0) printf("trans.construct S2T time is %.5f\n",maxt);maxt = 0.0;
+#endif
+
         // get A diagblock transpose
         // extract diag block transpose for A
         tuplevec.clear();
@@ -1278,13 +1293,26 @@ SpParMat1D<IU, NUO, UDERO> Mult_AnXBn_1D(SpParMat1D<IU,NU1,UDERA> & A, SpParMat1
                 tuplevec.push_back(std::make_tuple(colit.colid(),grow-tmp*myrank, nzit.value()));
             }
         }
+#ifndef TIMGING
+        MPI_Barrier(MPI_COMM_WORLD); t4 = MPI_Wtime();
+#endif
         auto Adiagptr = new std::tuple<IU,IU,NUO>[tuplevec.size()];
         memcpy(Adiagptr,tuplevec.data(), sizeof(std::tuple<IU,IU,NUO>)*tuplevec.size());
         SpTuples<IU, NUO> sptupleA(tuplevec.size(),blocksize,blocksize,Adiagptr);
         UDERB *AdiagTransDER = new UDERB(sptupleA,false);
+#ifndef TIMGING
+        MPI_Barrier(MPI_COMM_WORLD);t5 = MPI_Wtime(); t5 = t5-t4;MPI_Allreduce(&t5,&maxt,1,MPI_DOUBLE,MPI_MAX,MPI_COMM_WORLD);
+        if (myrank == 0) printf("trans.construct B1T time is %.5f\n",maxt);maxt = 0.0;
+#endif
+#ifndef TIMGING
+        MPI_Barrier(MPI_COMM_WORLD); t4 = MPI_Wtime();
+#endif
         // extract diag block transpose for A ends
-        
         auto stbtTuples = LocalHybridSpGEMM<PTFF, double>(*BOffdiagTransDER, *AdiagTransDER, false, false); // (S^TB^T)^T
+#ifndef TIMGING
+        MPI_Barrier(MPI_COMM_WORLD);t5 = MPI_Wtime(); t5 = t5-t4;MPI_Allreduce(&t5,&maxt,1,MPI_DOUBLE,MPI_MAX,MPI_COMM_WORLD);
+        if (myrank == 0) printf("localGEMM S2TB1T time is %.5f\n",maxt);maxt = 0.0;
+#endif
         UDERO *stbtDER = new UDERO(*stbtTuples,false);
         // transpose the result
         sendcnt.clear();
@@ -1300,41 +1328,88 @@ SpParMat1D<IU, NUO, UDERO> Mult_AnXBn_1D(SpParMat1D<IU,NU1,UDERA> & A, SpParMat1
             }
         }
         for(int i=0;i<sendtuples.size();i++)sendcnt[i] = sendtuples[i].size();
+#ifndef TIMGING
+        MPI_Barrier(MPI_COMM_WORLD); t4 = MPI_Wtime();
+#endif
         recvTuples = ExchangeDataGeneral(sendtuples, MPI_COMM_WORLD, datasize);
+#ifndef TIMGING
+        MPI_Barrier(MPI_COMM_WORLD);t5 = MPI_Wtime(); t5 = t5-t4;MPI_Allreduce(&t5,&maxt,1,MPI_DOUBLE,MPI_MAX,MPI_COMM_WORLD);
+        if (myrank == 0) printf("trans.comm S2TB1TT time is %.5f\n",maxt);maxt = 0.0;
+#endif
+#ifndef TIMGING
+        MPI_Barrier(MPI_COMM_WORLD); t4 = MPI_Wtime();
+#endif
         SpTuples<IU, NUO> offspTuples(datasize, totallength, blocksize, recvTuples);
         delete stbtDER;
         stbtDER = new UDERO(offspTuples, false);
-        *stbtDER += *sbb2DER;
-#ifndef NDDEBUG
-        t1 = MPI_Wtime(); t1 = t1-t0;MPI_Allreduce(&t1,&maxt,1,MPI_DOUBLE,MPI_MAX,MPI_COMM_WORLD);
-        if (myrank == 0) printf("STBTT time is %.5f\n",maxt);
+#ifndef TIMGING
+        MPI_Barrier(MPI_COMM_WORLD);t5 = MPI_Wtime(); t5 = t5-t4;MPI_Allreduce(&t5,&maxt,1,MPI_DOUBLE,MPI_MAX,MPI_COMM_WORLD);
+        if (myrank == 0) printf("trans.construct S2TB1TT time is %.5f\n",maxt);maxt = 0.0;
 #endif
-#ifndef NDDEBUG
+#ifndef TIMGING
+        MPI_Barrier(MPI_COMM_WORLD);t1 = MPI_Wtime(); t1 = t1-t0;MPI_Allreduce(&t1,&maxt,1,MPI_DOUBLE,MPI_MAX,MPI_COMM_WORLD);
+        if (myrank == 0) printf("Part 2 time is %.5f\n",maxt);maxt = 0.0;
+#endif
+#ifndef TIMGING
+        MPI_Barrier(MPI_COMM_WORLD); t0 = MPI_Wtime();
+#endif
+        *stbtDER += *sbb2DER;
+#ifndef TIMGING
+        MPI_Barrier(MPI_COMM_WORLD);t1 = MPI_Wtime(); t1 = t1-t0;MPI_Allreduce(&t1,&maxt,1,MPI_DOUBLE,MPI_MAX,MPI_COMM_WORLD);
+        if (myrank == 0) printf("Merge part 1 and part 2 time is %.5f\n",maxt);maxt = 0.0;
+#endif
+
+#ifndef TIMGING
+        MPI_Barrier(MPI_COMM_WORLD); t4 = MPI_Wtime();
+#endif
+#ifndef TIMGING
         MPI_Barrier(MPI_COMM_WORLD); t0 = MPI_Wtime();
 #endif
         // offdiag 2D
-        SpParMat<IU, NUO, UDERO> offdiagA2D(A);
-        SpParMat<IU, NUO, UDERO> offdiagB2D(B);
-        offdiagA2D.RemoveDiagBlock(tmp);
-        offdiagB2D.RemoveDiagBlock(tmp);
+        SpParMat<IU, NUO, UDERO> offdiagA2D(A, tmp, false);
+        SpParMat<IU, NUO, UDERO> offdiagB2D(B, tmp, false);
+        // SpParMat<IU, NUO, UDERO> offdiagA2D(A);
+        // SpParMat<IU, NUO, UDERO> offdiagB2D(B);
+        // offdiagA2D.RemoveDiagBlock(tmp);
+        // offdiagB2D.RemoveDiagBlock(tmp);
+#ifndef TIMGING
+        MPI_Barrier(MPI_COMM_WORLD);t1 = MPI_Wtime(); t1 = t1-t0;MPI_Allreduce(&t1,&maxt,1,MPI_DOUBLE,MPI_MAX,MPI_COMM_WORLD);
+        if (myrank == 0) printf("1D To 2D time is %.5f\n",maxt);maxt = 0.0;
+#endif
+#ifndef TIMGING
+        MPI_Barrier(MPI_COMM_WORLD); t0 = MPI_Wtime();
+#endif
         SpParMat<int64_t, double, SpDCCols < int64_t, double >> offdiagC2D = 
         Mult_AnXBn_Synch<PTFF, double, SpDCCols<int64_t, double>, int64_t, double, double, SpDCCols<int64_t, double>, SpDCCols<int64_t, double> >
         (offdiagA2D, offdiagB2D); // S^TS^T
-#ifndef NDDEBUG
+#ifndef TIMGING
         t1 = MPI_Wtime(); t1 = t1-t0;MPI_Allreduce(&t1,&maxt,1,MPI_DOUBLE,MPI_MAX,MPI_COMM_WORLD);
-        if (myrank == 0) printf("Offdiag 2D Matmul time is %.5f\n",maxt);
+        if (myrank == 0) printf("Offdiag 2D Matmul time is %.5f\n",maxt);maxt = 0.0;
 #endif
-#ifndef NDDEBUG
+#ifndef TIMGING
         MPI_Barrier(MPI_COMM_WORLD); t0 = MPI_Wtime();
 #endif
         SpParMat1D<IU, NUO, UDERO> C1D(offdiagC2D,SpParMat1DTYPE::COLWISE);
-        *C1D.spSeq += *stbtDER;
-#ifndef NDDEBUG
+#ifndef TIMGING
         t1 = MPI_Wtime(); t1 = t1-t0;MPI_Allreduce(&t1,&maxt,1,MPI_DOUBLE,MPI_MAX,MPI_COMM_WORLD);
-        if (myrank == 0) printf("Final merge time is %.5f\n",maxt);
+        if (myrank == 0) printf("2D to 1D time is %.5f\n",maxt);maxt = 0.0;
+#endif
+#ifndef TIMGING
+        t5 = MPI_Wtime(); t5 = t5-t4;MPI_Allreduce(&t5,&maxt,1,MPI_DOUBLE,MPI_MAX,MPI_COMM_WORLD);
+        if (myrank == 0) printf("Part 3 time is %.5f\n",maxt);maxt = 0.0;
+#endif
+
+
+#ifndef TIMGING
+        MPI_Barrier(MPI_COMM_WORLD); t0 = MPI_Wtime();
+#endif
+*C1D.spSeq += *stbtDER;
+#ifndef TIMGING
+        t1 = MPI_Wtime(); t1 = t1-t0;MPI_Allreduce(&t1,&maxt,1,MPI_DOUBLE,MPI_MAX,MPI_COMM_WORLD);
+        if (myrank == 0) printf("Final Merge time is %.5f\n",maxt);maxt = 0.0;
 #endif
         return C1D;
-    }
+    }   
 
 
 

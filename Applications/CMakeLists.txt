@@ -2,6 +2,8 @@
 
 add_executable(spgemm1d SpGEMM1D.cpp)
 target_link_libraries(spgemm1d CombBLAS)
+# ADD_EXECUTABLE( mcl MCL.cpp )
+# TARGET_LINK_LIBRARIES( mcl CombBLAS)
 
 # ADD_EXECUTABLE( tdbfs TopDownBFS.cpp )
 # ADD_EXECUTABLE( dobfs DirOptBFS.cpp )

@@ -12,7 +12,8 @@
 # node 8
 
 export OMP_NUM_THREADS=128
-srun /global/homes/y/yuxihong/graphclustering/CombBLAS/build/Applications/spgemm1d $VIRUS
-srun /global/homes/y/yuxihong/graphclustering/CombBLAS/build/Applications/spgemm1d $ARCH
-srun /global/homes/y/yuxihong/graphclustering/CombBLAS/build/Applications/spgemm1d $EUK
-# srun /global/homes/y/yuxihong/graphclustering/CombBLAS/a.out
+SUBMITROOT=/pscratch/sd/y/yuxihong/graphclustering/CombBLAS_submit
+srun $SUBMITROOT/build/Applications/spgemm1d $VIRUS
+srun $SUBMITROOT/build/Applications/spgemm1d $ARCH
+srun $SUBMITROOT/build/Applications/spgemm1d $EUK
+
