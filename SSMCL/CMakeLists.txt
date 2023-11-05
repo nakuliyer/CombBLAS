@@ -1,7 +1,9 @@
 # Top level directory has the include files
 
-# add_executable(spgemm1d SpGEMM1D.cpp)
-# target_link_libraries(spgemm1d CombBLAS)
+
+ADD_EXECUTABLE( spgemm1d SpGEMM1D.cpp )
+TARGET_LINK_LIBRARIES( spgemm1d CombBLAS)
+
 
 # ADD_EXECUTABLE( mcl MCL.cpp )
 # TARGET_LINK_LIBRARIES( mcl CombBLAS)
