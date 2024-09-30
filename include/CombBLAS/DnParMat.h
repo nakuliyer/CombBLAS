@@ -77,6 +77,14 @@ public:
 
 
 	void
+	setarr (IT i, NT v)
+	{
+		arr[i] = v;
+	}
+
+
+
+	void
 	PrintToFile (std::string prefix)
 	{
 		std::ofstream output;
