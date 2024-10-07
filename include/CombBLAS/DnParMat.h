@@ -87,7 +87,7 @@ public:
 	void
 	setarr(IT* new_arr, size_t new_arr_size)
 	{
-		arr.assign(new_arr, new_arr + new_arr_size)
+		arr.assign(new_arr, new_arr + new_arr_size);
 	}
 
 
