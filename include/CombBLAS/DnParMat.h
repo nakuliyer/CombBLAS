@@ -85,9 +85,9 @@ public:
 
 
 	void
-	setarr(IT* new_arr, size_t new_arr_size)
+	copytoarr (IT* new_arr, size_t size, size_t index)
 	{
-		arr.assign(new_arr, new_arr + new_arr_size);
+		std::copy(new_arr, new_arr + size, arr.begin() + index);
 	}
 
 
