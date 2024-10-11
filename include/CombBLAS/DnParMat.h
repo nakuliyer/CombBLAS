@@ -84,6 +84,14 @@ public:
 
 
 
+	std::vector<NT> &
+	getarr ()
+	{
+		return arr;
+	}
+
+
+
 	void
 	copytoarr (IT* new_arr, size_t size, size_t index)
 	{
