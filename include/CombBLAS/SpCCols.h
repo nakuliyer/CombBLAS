@@ -281,7 +281,7 @@ private:
     void CopyCsc(Csc<IT,NT> * source);
     
     template <typename SR, typename IU, typename NU, typename RHS, typename LHS>
-    friend void csc_gespmv_dense (const SpCCols<IU, NU> & A, const RHS * x, LHS * y); //!< dense vector (not implemented)
+    friend void csc_gespmv_dense (const SpCCols<IU, NU> & A, const RHS * x, LHS * y); //!< dense vector
     
     //<! sparse vector version
     template <typename SR, typename IU, typename NUM, typename DER, typename IVT, typename OVT>

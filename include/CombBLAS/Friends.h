@@ -92,6 +92,23 @@ void dcsc_gespmv (const SpDCCols<IU, NU> & A, const RHS * x, LHS * y)
 	}
 }
 
+//! CSC SpMV with dense vector
+template <typename SR, typename IU, typename NU, typename RHS, typename LHS>
+void csc_gespmv_dense (const SpCCols<IU, NU> & A, const RHS * x, LHS * y)
+{
+	if(A.nnz > 0)
+	{	
+		for(IU colid =0; colid<A.getnrow(); ++colid)    // for all columns
+		{
+			for(IU i = A.csc->jc[colid]; i<A.csc->jc[colid+1]; ++i)
+			{
+				IU rowid = A.csc->ir[i];
+				SR::axpy(A.csc->num[i], x[colid], y[rowid]);
+			}
+		}
+	}
+}
+
 //! SpMV with dense vector (multithreaded version)
 template <typename SR, typename IU, typename NU, typename RHS, typename LHS>
 void dcsc_gespmv_threaded_nosplit (const SpDCCols<IU, NU> & A, const RHS * x, LHS * y)
