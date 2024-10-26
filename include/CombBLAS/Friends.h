@@ -98,7 +98,7 @@ void csc_gespmv_dense (const SpCCols<IU, NU> & A, const RHS * x, LHS * y)
 {
 	if(A.nnz > 0)
 	{	
-		for(IU colid =0; colid<A.getnrow(); ++colid)    // for all columns
+		for(IU colid =0; colid<A.getncol(); ++colid)    // for all columns
 		{
 			for(IU i = A.csc->jc[colid]; i<A.csc->jc[colid+1]; ++i)
 			{
