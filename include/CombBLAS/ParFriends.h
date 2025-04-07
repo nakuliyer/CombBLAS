@@ -3013,6 +3013,7 @@ SpMM_sC
 	spmm_stats						&stats
 )
 {
+	auto marker_start = std::chrono::high_resolution_clock::now();
 	auto t_tot_beg = std::chrono::high_resolution_clock::now();
 	
 	
@@ -3061,8 +3062,13 @@ SpMM_sC
 	UDER	*ARecv = NULL;
 	NUV		*XRecv = new NUV[max_xrecv_size];
 
+	auto marker_end = std::chrono::high_resolution_clock::now();
+	stats.non_memcpy_time += std::chrono::duration_cast<std::chrono::milliseconds>(
+		marker_end - marker_start).count();
+
 	for (int s = 0; s < nstages; ++s)
 	{
+		marker_start = std::chrono::high_resolution_clock::now();
 		auto t_beg = std::chrono::high_resolution_clock::now();
 		
 		
@@ -3111,6 +3117,10 @@ SpMM_sC
 		// ofs << std::flush;
 
 		// assert (XRecv_cur != NULL && Y.arr_.data() != NULL);
+		auto marker_end = std::chrono::high_resolution_clock::now();
+		stats.non_memcpy_time += std::chrono::duration_cast<std::chrono::milliseconds>(
+		marker_end - marker_start).count();
+
 		csc_gespmm_cusparse<SR>(*ARecv, XRecv_cur, Y.arr.data(),
 								(int)X.getncol(), static_cast<NUM>(1.0), stats);
 

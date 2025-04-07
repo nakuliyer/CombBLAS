@@ -17,7 +17,7 @@ TARGET_LINK_LIBRARIES( fmis CombBLAS)
 # TARGET_LINK_LIBRARIES( mcl CombBLAS)
 TARGET_LINK_LIBRARIES( betwcent CombBLAS)
 TARGET_LINK_LIBRARIES( lacc CombBLAS)
-TARGET_LINK_LIBRARIES( mcl-gpu CombBLAS cudart cusparse)
+TARGET_LINK_LIBRARIES( mcl-gpu CombBLAS cudart cusparse nvToolsExt)
 # keep CUDA_ARCHITECTURES empty until you solve shfl_xor in nsparse
 # set_target_properties( mcl-gpu PROPERTIES CUDA_ARCHITECTURES "70;72;80")
 # set_target_properties( mcl-gpu PROPERTIES)

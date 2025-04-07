@@ -48,6 +48,7 @@
 #include "cusparse.h"
 #include "cuda_runtime_api.h"
 #include <string>
+#include <nvToolsExt.h>
 using std::string;
 
 
@@ -1341,6 +1342,11 @@ spmm_stats
 
 	double t_sA_2D_comm_bcastX;
 	double t_sA_2D_comm_reduceY;	
+
+	double cuda_memcpy_time;
+	double cuda_malloc_time;
+	double cuda_free_time;
+	double non_memcpy_time;
 };
 
 	
@@ -1478,6 +1484,7 @@ csc_gespmm_cusparse
 	spmm_stats              &stats
 )
 {
+	auto marker_start = std::chrono::high_resolution_clock::now();
 	int rank;
 	MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 	
@@ -1502,12 +1509,18 @@ csc_gespmm_cusparse
 	
 	cudaEvent_t t_beg, t_end;
 	cudaEventCreate(&t_beg); cudaEventCreate(&t_end);
+
+	auto malloc_beg = std::chrono::high_resolution_clock::now();
 	
 	cudaMalloc((void **)&d_jc, (nc+1)*sizeof(*d_jc));
     cudaMalloc((void **)&d_ir, nnz*sizeof(*d_ir));
     cudaMalloc((void **)&d_num, nnz*sizeof(*d_num));
 	cudaMalloc((void **)&d_Xvals, (nc*d)*sizeof(*d_Xvals));
 	cudaMalloc((void **)&d_Yvals, (nr*d)*sizeof(*d_Yvals));
+
+	auto malloc_end = std::chrono::high_resolution_clock::now();
+	stats.cuda_malloc_time += std::chrono::duration_cast<std::chrono::milliseconds>(
+		malloc_end - malloc_beg).count();
 	
 	assert(d_Xvals != NULL && d_Yvals != NULL);
 
@@ -1517,15 +1530,28 @@ csc_gespmm_cusparse
 	cudaDataType cusparse_val = CUDA_R_32F;
 	if (sizeof(NU) == 8)
 		cusparse_val = CUDA_R_64F;
-
 	
 	cudaEventRecord(t_beg);
+		
+	auto memcpy_beg = std::chrono::high_resolution_clock::now();
+
+	auto marker_end = std::chrono::high_resolution_clock::now();
+	stats.non_memcpy_time += std::chrono::duration_cast<std::chrono::milliseconds>(
+		marker_end - marker_start).count();
 	
+	nvtxRangePush("SpMM cudaMemcpy");
 	cudaMemcpy(d_jc, A.csc->jc, (nc+1)*sizeof(*d_jc), cudaMemcpyHostToDevice);
     cudaMemcpy(d_ir, A.csc->ir, nnz*sizeof(*d_ir), cudaMemcpyHostToDevice);
     cudaMemcpy(d_num, A.csc->num, nnz*sizeof(*d_num), cudaMemcpyHostToDevice);
 	cudaMemcpy(d_Xvals, X, (nc*d)*sizeof(*X), cudaMemcpyHostToDevice);
 	cudaMemcpy(d_Yvals, Y, (nr*d)*sizeof(*Y), cudaMemcpyHostToDevice);
+	nvtxRangePop();
+
+	marker_start = std::chrono::high_resolution_clock::now();
+
+	auto memcpy_end = std::chrono::high_resolution_clock::now();
+	stats.cuda_memcpy_time += std::chrono::duration_cast<std::chrono::milliseconds>(
+		memcpy_end - memcpy_beg).count();
 	
 	cudaEventRecord(t_end);
 	cudaEventSynchronize(t_end);
@@ -1598,11 +1624,27 @@ csc_gespmm_cusparse
 	stats.t_g_spmm += t_elapsed;
 
 	cudaEventRecord(t_beg);
+
+	marker_end = std::chrono::high_resolution_clock::now();
+	stats.non_memcpy_time += std::chrono::duration_cast<std::chrono::milliseconds>(
+		marker_end - marker_start).count();
+
+	memcpy_beg = std::chrono::high_resolution_clock::now();
+	nvtxRangePush("SpMM cudaMemcpy");
 	cudaMemcpy(Y, d_Yvals, (nr*d)*sizeof(*Y), cudaMemcpyDeviceToHost);
+	nvtxRangePop();
+	memcpy_end = std::chrono::high_resolution_clock::now();
+	stats.cuda_memcpy_time += std::chrono::duration_cast<std::chrono::milliseconds>(
+		memcpy_end - memcpy_beg).count();
+
+	marker_start = std::chrono::high_resolution_clock::now();
+
 	cudaEventRecord(t_end);
 	cudaEventSynchronize(t_end);
 	cudaEventElapsedTime(&t_elapsed, t_beg, t_end);
 	stats.t_g_d2h_memcpy += t_elapsed;
+
+	auto free_beg = std::chrono::high_resolution_clock::now();
 
 	cudaFree(d_jc);
 	cudaFree(d_ir);
@@ -1610,6 +1652,14 @@ csc_gespmm_cusparse
 	cudaFree(d_Xvals);
 	cudaFree(d_Yvals);
 	cudaFree(buf_spmm);
+
+	auto free_end = std::chrono::high_resolution_clock::now();
+	stats.cuda_free_time += std::chrono::duration_cast<std::chrono::milliseconds>(
+		free_end - free_beg).count();
+
+		marker_end = std::chrono::high_resolution_clock::now();
+		stats.non_memcpy_time += std::chrono::duration_cast<std::chrono::milliseconds>(
+			marker_end - marker_start).count();
 
 	return;
 }
